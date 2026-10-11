@@ -1,0 +1,8 @@
+.env
+venv/
+__pycache__/
+*.db
+media/uploads/*
+media/results/*
+!media/uploads/.gitkeep
+!media/results/.gitkeep

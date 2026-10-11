@@ -1,0 +1,18 @@
+# Botni server ishga tushganda avtomatik yoqish va to'xtab qolsa qayta ishga tushirish.
+# O'rnatish: README.md → «Serverda 24/7 ishlatish»
+[Unit]
+Description=Ustoz Elite Telegram bot
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USERNAME
+WorkingDirectory=PROJECT_DIR
+ExecStart="PROJECT_DIR/venv/bin/python" app.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
