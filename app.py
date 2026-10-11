@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 
+from aiohttp import web
 from aiogram.types import BotCommand
 
 from data import config
@@ -12,7 +14,24 @@ from middlewares.user import UserMiddleware
 from services.worker import run_worker
 
 
+async def start_web_server() -> web.AppRunner:
+    async def health(request: web.Request) -> web.Response:
+        return web.Response(text="OK")
+
+    web_app = web.Application()
+    web_app.router.add_get("/", health)
+
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    await web.TCPSite(runner, "0.0.0.0", port).start()
+    logging.info("Web server %s portda ishga tushdi", port)
+    return runner
+
+
 async def main() -> None:
+    runner = await start_web_server()
+
     config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     await init_db()
@@ -32,6 +51,7 @@ async def main() -> None:
         await dp.start_polling(bot)
     finally:
         worker.cancel()
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
