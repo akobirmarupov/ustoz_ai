@@ -28,6 +28,15 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class ReferralClick(Base):
+    """Taklif havolasi bosilganini darhol bazaga yozamiz: bot qayta ishga tushsa ham taklif yo'qolmaydi."""
+    __tablename__ = "referral_clicks"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # havolani bosgan (hali ro'yxatdan o'tmagan)
+    ref_id: Mapped[int] = mapped_column(BigInteger)                     # taklif qilgan
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class BalanceTx(Base):
     """Hisob tarixi: + to'ldirish/bonus, − xarid."""
     __tablename__ = "balance_tx"

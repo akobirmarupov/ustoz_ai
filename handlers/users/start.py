@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from data import config
 from database.db import Session
-from database.models import User
+from database.models import ReferralClick, User
 from database.requests import add_balance, create_user, referral_bonuses_today
 from keyboards.default.menu import main_menu, phone_menu
 from states.states import Register
@@ -22,8 +22,10 @@ router = Router()
 async def start(message: Message, state: FSMContext, command: CommandObject, db_user=None):
     await state.clear()
     ref = command.args or ""
-    if ref.startswith("ref_") and ref[4:].isdigit() and int(ref[4:]) != message.from_user.id:
-        await state.update_data(ref=int(ref[4:]))  # bonus faqat ro'yxatdan to'liq o'tgandan keyin
+    if not db_user and ref.startswith("ref_") and ref[4:].isdigit() and int(ref[4:]) != message.from_user.id:
+        async with Session() as s:  # bonus faqat ro'yxatdan to'liq o'tgandan keyin beriladi
+            await s.merge(ReferralClick(user_id=message.from_user.id, ref_id=int(ref[4:])))
+            await s.commit()
     if db_user:
         await message.answer(f"Assalomu alaykum, {escape(db_user.full_name)}! 👋\nBo'limni tanlang:",
                              reply_markup=main_menu())
@@ -75,7 +77,13 @@ async def reg_phone(message: Message, state: FSMContext):
     phone = message.contact.phone_number
     user = await create_user(message.from_user.id, data["name"], message.from_user.username, phone)
     await state.clear()
-    await _reward_referrer(message.bot, data.get("ref"), user, phone)
+    async with Session() as s:
+        click = await s.get(ReferralClick, user.id)
+        ref_id = click.ref_id if click else None
+        if click:
+            await s.delete(click)
+            await s.commit()
+    await _reward_referrer(message.bot, ref_id, user, phone)
     await message.answer(
         "✅ Ro'yxatdan o'tdingiz!\n\n"
         "🎓 <b>Abituriyent</b> — imtihonga tayyorgarlik va AI ustoz\n"
