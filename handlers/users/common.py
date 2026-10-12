@@ -36,6 +36,7 @@ async def profile(message: Message, db_user):
         f"👤 <b>{escape(db_user.full_name)}</b>\n"
         f"📱 {db_user.phone}\n"
         f"🆔 <code>{db_user.id}</code>\n\n"
+        f"💰 Balans: <b>{money(db_user.balance)}</b>\n"
         f"⭐️ Tarif: <b>{config.PLANS[plan]['name']}</b>{until}\n"
         f"📝 Bugun ishlangan testlar: <b>{tests_today}</b>\n"
         f"🎁 Bepul slayd/referat/mustaqil ish: <b>{free_docs}</b> ta\n"
@@ -61,6 +62,7 @@ async def help_(message: Message):
         "1. Bo'limni tanlang va so'ralgan ma'lumotlarni kiriting.\n"
         "2. Pullik xizmatda kartaga to'lab, izohga kodni yozing.\n"
         "3. «✅ To'lov qildim» tugmasini bosib, chek rasmini yuboring.\n"
-        "4. Admin tasdiqlagach, ishingiz avtomatik tayyorlanadi.\n\n"
+        "4. Admin tasdiqlagach, ishingiz avtomatik tayyorlanadi.\n"
+        "Yoki «💰 Hisobim» dagi pul bilan «💰 Hisobdan to'lash» — darhol, chekisiz.\n\n"
         "🎓 <b>Abituriyent:</b> 📝 Test ishlash, 🧪 Mock imtihon, ❌ Xatolar daftari, 🏆 Reyting, 🤖 AI ustoz.\n"
         "👨‍🎓 <b>Student:</b> slayd, referat, mustaqil ish, maqola, kurs ishi va test tayyorlash." + support)

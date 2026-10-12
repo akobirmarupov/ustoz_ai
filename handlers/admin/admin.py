@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from data import config
 from database.db import Session
 from database.models import Order, User
-from database.requests import pending_payments, stats
+from database.requests import add_balance, pending_payments, stats
 from filters.filters import IsAdmin
 from keyboards.inline.buttons import REJECT_REASONS, admin_payment_kb
 from services import payments
@@ -38,6 +38,7 @@ async def panel(message: Message):
         "/xabar — barcha foydalanuvchilarga xabar yuborish\n"
         "/tolovlar — kutilayotgan to'lovlar\n"
         "/premium ID tarif kun — qo'lda Premium berish (tarif: basic, pro, max)\n"
+        "/balans ID summa — hisobga qo'shish (manfiy — ayirish)\n"
         "/block ID, /unblock ID",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📚 Sinflar va fanlar", callback_data="cg:list")]]))
@@ -133,3 +134,24 @@ async def block(message: Message, command: CommandObject):
         user.is_blocked = command.command == "block"
         await s.commit()
     await message.answer("✅ Bajarildi")
+
+
+@router.message(Command("balans"))
+async def balance(message: Message, command: CommandObject):
+    try:
+        uid, amount = command.args.split()
+        uid, amount = int(uid), int(amount)
+    except (AttributeError, ValueError):
+        await message.answer("Format: /balans 123456789 5000  (ayirish uchun: -5000)")
+        return
+    async with Session() as s:
+        if not await s.get(User, uid):
+            await message.answer("Foydalanuvchi topilmadi")
+            return
+    new = await add_balance(uid, amount, "admin", "Admin tomonidan")
+    await message.answer(f"✅ Bajarildi. Yangi balans: {money(new)}")
+    try:
+        await message.bot.send_message(uid, f"👑 Hisobingiz {'+' if amount > 0 else '−'}{money(abs(amount))} ga o'zgardi.\n"
+                                            f"💰 Balans: <b>{money(new)}</b>")
+    except Exception:  # noqa: BLE001 — foydalanuvchi botni bloklagan bo'lishi mumkin
+        pass

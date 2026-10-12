@@ -1,8 +1,8 @@
 from aiogram import Router
 
 from handlers.admin import admin, broadcast, content, mocks
-from handlers.users import (abi_tests, abituriyent, common, fallback, mistakes, mock, payments, quiz, rating, start,
-                            student, tests)
+from handlers.users import (abi_tests, abituriyent, balance, common, fallback, mistakes, mock, payments, quiz, rating,
+                            start, student, tests)
 
 
 def setup_handlers() -> Router:
@@ -17,6 +17,7 @@ def setup_handlers() -> Router:
         content.router,
         mocks.router,
         payments.router,
+        balance.router,
         student.router,
         tests.router,
         abi_tests.router,

@@ -115,10 +115,11 @@ async def stats() -> dict:
         premium = (await s.execute(select(func.count(User.id)).where(
             User.plan != "free", User.plan_until > datetime.now()))).scalar_one()
         pending = (await s.execute(select(func.count(Payment.id)).where(Payment.status == "pending"))).scalar_one()
+        real = (Payment.status == "approved") & (Payment.method != "balance")  # hisobdan xarid — ikki marta sanalmaydi
         revenue_today = (await s.execute(select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.status == "approved", Payment.decided_at >= today))).scalar_one()
+            real, Payment.decided_at >= today))).scalar_one()
         revenue_month = (await s.execute(select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.status == "approved", Payment.decided_at >= month))).scalar_one()
+            real, Payment.decided_at >= month))).scalar_one()
         queued = (await s.execute(select(func.count(Job.id)).where(Job.status.in_(("queued", "running"))))).scalar_one()
     return dict(users=users, new_today=new_today, premium=premium, pending=pending,
                 revenue_today=revenue_today, revenue_month=revenue_month, queued=queued)
@@ -311,3 +312,51 @@ async def today_usage(user_id: int, kind: str) -> int:
 async def all_user_ids() -> list[int]:
     async with Session() as s:
         return list((await s.execute(select(User.id).where(User.is_blocked.is_(False)))).scalars())
+
+
+# ---------------- Hisob (balans) ----------------
+from database.models import BalanceTx  # noqa: E402
+
+
+async def add_balance(user_id: int, amount: int, kind: str, note: str = "") -> int:
+    """Hisobga pul qo'shadi (yoki manfiy bo'lsa ayiradi), yangi balansni qaytaradi."""
+    async with Session() as s:
+        user = (await s.execute(select(User).where(User.id == user_id).with_for_update())).scalar_one()
+        user.balance += amount
+        s.add(BalanceTx(user_id=user_id, amount=amount, kind=kind, note=note[:255]))
+        await s.commit()
+        return user.balance
+
+
+async def spend_balance(user_id: int, amount: int, note: str) -> bool:
+    """Balans yetarli bo'lsa yechadi. Bir vaqtda ikki marta bosilsa ham ikki marta yechilmaydi."""
+    async with Session() as s:
+        user = (await s.execute(select(User).where(User.id == user_id).with_for_update())).scalar_one()
+        if user.balance < amount:
+            return False
+        user.balance -= amount
+        s.add(BalanceTx(user_id=user_id, amount=-amount, kind="purchase", note=note[:255]))
+        await s.commit()
+        return True
+
+
+async def balance_history(user_id: int, limit: int = 10) -> list[BalanceTx]:
+    async with Session() as s:
+        return list((await s.execute(select(BalanceTx).where(BalanceTx.user_id == user_id)
+                                     .order_by(BalanceTx.id.desc()).limit(limit))).scalars())
+
+
+async def referral_stats(user_id: int) -> tuple[int, int]:
+    """(taklif qilingan do'stlar soni, ulardan topilgan bonus)."""
+    async with Session() as s:
+        count = (await s.execute(select(func.count(User.id)).where(User.referred_by == user_id))).scalar_one()
+        earned = (await s.execute(select(func.coalesce(func.sum(BalanceTx.amount), 0)).where(
+            BalanceTx.user_id == user_id, BalanceTx.kind == "referral"))).scalar_one()
+        return count, earned
+
+
+async def referral_bonuses_today(user_id: int) -> int:
+    today = datetime.combine(date.today(), datetime.min.time())
+    async with Session() as s:
+        return (await s.execute(select(func.count(BalanceTx.id)).where(
+            BalanceTx.user_id == user_id, BalanceTx.kind == "referral", BalanceTx.created_at >= today))).scalar_one()

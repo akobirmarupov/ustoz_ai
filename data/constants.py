@@ -5,6 +5,8 @@ BTN_STUDENT = "👨‍🎓 Student"
 BTN_PROFILE = "👤 Profil"
 BTN_PAYMENTS = "💳 To'lovlarim"
 BTN_HELP = "ℹ️ Yordam"
+BTN_BALANCE = "💰 Hisobim"
+BTN_INVITE = "🎁 Do'stni taklif qilish"
 BTN_BACK = "⬅️ Bosh menyu"
 BTN_CANCEL = "❌ Bekor qilish"
 

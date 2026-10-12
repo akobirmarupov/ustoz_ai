@@ -6,13 +6,13 @@ from html import escape
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from data import config
 from data.constants import KIND_TITLES
 from database.db import Session
-from database.models import Order, Payment, TestPart, TestSet, User
-from database.requests import enqueue, new_payment, open_payment_for_order
+from database.models import BalanceTx, Order, Payment, TestPart, TestSet, User
+from database.requests import add_balance, enqueue, new_payment, open_payment_for_order, spend_balance
 from keyboards.inline.buttons import admin_payment_kb, paid_kb
 
 log = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ def money(n: int) -> str:
 
 
 def payment_title(payment: Payment, order: Order | None) -> str:
+    if payment.purpose == "topup":
+        return "💰 Hisobni to'ldirish"
     if payment.purpose == "premium":
         return f"⭐️ Premium {config.PLANS[payment.plan]['name']} ({config.PLAN_DAYS} kun)"
     title = KIND_TITLES.get(order.kind, order.kind) if order else "Buyurtma"
@@ -37,7 +39,40 @@ async def send_instruction(bot: Bot, payment: Payment, title: str, note: str = "
             f"Karta: <code>{config.CARD_NUMBER}</code>\n{owner}\n"
             f"❗️ To'lov izohiga shu kodni yozing: <code>{payment.code}</code>\n\n"
             "To'lovdan so'ng «✅ To'lov qildim» tugmasini bosing va chek rasmini yuboring.")
-    await bot.send_message(payment.user_id, text, reply_markup=paid_kb(payment.id))
+    kb = paid_kb(payment.id)
+    if payment.purpose != "topup":
+        async with Session() as s:
+            balance = (await s.get(User, payment.user_id)).balance
+        text += f"\n\n💰 Yoki hisobingizdan to'lang (balans: <b>{money(balance)}</b>)."
+        kb = InlineKeyboardMarkup(inline_keyboard=kb.inline_keyboard + [[InlineKeyboardButton(
+            text=f"💰 Hisobdan to'lash ({money(balance)})", callback_data=f"paybal:{payment.id}")]])
+    await bot.send_message(payment.user_id, text, reply_markup=kb)
+
+
+async def pay_from_balance(bot: Bot, payment_id: int, user_id: int) -> tuple[bool, str]:
+    """Hisobdan to'lash: balans yetsa yechiladi va xizmat admin tasdig'isiz darhol ochiladi."""
+    async with Session() as s:
+        p = await s.get(Payment, payment_id)
+        order = await s.get(Order, p.order_id) if p and p.order_id else None
+    if not p or p.user_id != user_id or p.purpose == "topup":
+        return False, "To'lov topilmadi"
+    # To'lovni atomik «band qilamiz»: ikki marta bosilsa ham faqat bittasi o'tadi
+    async with Session() as s:
+        res = await s.execute(update(Payment).where(Payment.id == payment_id, Payment.status == "waiting_receipt")
+                              .values(status="pending", method="balance"))
+        await s.commit()
+    if res.rowcount != 1:
+        return False, "Bu to'lov allaqachon bajarilgan yoki tekshirilmoqda"
+    if not await spend_balance(user_id, p.amount, payment_title(p, order)):
+        async with Session() as s:
+            await s.execute(update(Payment).where(Payment.id == payment_id)
+                            .values(status="waiting_receipt", method="manual"))
+            await s.commit()
+        return False, "Hisobingizda mablag' yetarli emas. «💰 Hisobim» → «➕ Hisobni to'ldirish»"
+    ok, msg = await approve(bot, payment_id, admin_id=0)
+    if not ok:  # kutilmagan holat: pul qaytariladi
+        await add_balance(user_id, p.amount, "purchase", "Qaytarildi: " + payment_title(p, order))
+    return ok, msg
 
 
 async def start_payment(bot: Bot, user_id: int, purpose: str, amount: int, title: str,
@@ -87,7 +122,11 @@ async def approve(bot: Bot, payment_id: int, admin_id: int) -> tuple[bool, str]:
         now = datetime.now()
         p.status, p.admin_id, p.decided_at = "approved", admin_id, now
         user = await s.get(User, p.user_id)
-        if p.purpose == "premium":
+        if p.purpose == "topup":
+            user.balance += p.amount
+            s.add(BalanceTx(user_id=user.id, amount=p.amount, kind="topup", note=f"Karta orqali · {p.code}"))
+            msg = f"✅ Hisobingiz <b>{money(p.amount)}</b> ga to'ldirildi!\n💰 Balans: <b>{money(user.balance)}</b>"
+        elif p.purpose == "premium":
             start = user.plan_until if (user.plan == p.plan and user.plan_until and user.plan_until > now) else now
             user.plan = p.plan
             user.plan_until = start + timedelta(days=config.PLAN_DAYS)

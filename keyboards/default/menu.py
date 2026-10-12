@@ -9,7 +9,7 @@ def _kb(rows: list[list[str]]) -> ReplyKeyboardMarkup:
 
 
 def main_menu() -> ReplyKeyboardMarkup:
-    return _kb([[BTN_ABITURIYENT, BTN_STUDENT], [BTN_PROFILE, BTN_PAYMENTS], [BTN_HELP]])
+    return _kb([[BTN_ABITURIYENT, BTN_STUDENT], [BTN_BALANCE, BTN_INVITE], [BTN_PROFILE, BTN_PAYMENTS], [BTN_HELP]])
 
 
 def abituriyent_menu() -> ReplyKeyboardMarkup:

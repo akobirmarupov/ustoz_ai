@@ -65,3 +65,7 @@ class AdminMock(StatesGroup):
 class Broadcast(StatesGroup):
     message = State()
     confirm = State()
+
+
+class Topup(StatesGroup):
+    amount = State()

@@ -22,6 +22,21 @@ class User(Base):
     free_docs_used: Mapped[int] = mapped_column(Integer, default=0)
     free_test_used: Mapped[bool] = mapped_column(Boolean, default=False)
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    balance: Mapped[int] = mapped_column(Integer, default=0)            # so'm, faqat bot ichida ishlatiladi
+    referred_by: Mapped[int | None] = mapped_column(BigInteger)         # kim taklif qilgan
+    channel_bonus: Mapped[bool] = mapped_column(Boolean, default=False)  # kanal bonusi olinganmi
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class BalanceTx(Base):
+    """Hisob tarixi: + to'ldirish/bonus, − xarid."""
+    __tablename__ = "balance_tx"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))  # topup | referral | channel | purchase | admin
+    note: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

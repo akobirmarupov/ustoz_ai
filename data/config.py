@@ -42,6 +42,14 @@ PRICES = {
     "test_manual": 45_000,  # qo'lda yozilgan test
 }
 QUESTION_TIMES = (10, 15, 20, 30)  # har bir savolga soniya (quiz taymeri)
+
+# ---------- Hisob (balans) va bonuslar ----------
+REF_BONUS = 1_500            # taklif qilingan har bir yangi do'st uchun
+REF_DAILY_LIMIT = 20         # bir kunda ko'pi bilan nechta do'st uchun bonus
+CHANNEL_BONUS = 2_000        # kanalga obuna uchun (bir marta)
+CHANNEL = os.getenv("CHANNEL") or "@marupov_akobir"
+TOPUP_AMOUNTS = (10_000, 20_000, 50_000, 100_000)
+MIN_TOPUP, MAX_TOPUP = 5_000, 2_000_000
 FREE_DOC_KINDS = ("slide", "referat", "mustaqil")  # 2 tasi bepul (turi farqi yo'q)
 FREE_DOCS = 2
 
