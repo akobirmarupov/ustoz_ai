@@ -72,7 +72,8 @@ def _fmt(seconds: float) -> str:
     return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
-def _poll_payload(q: dict, idx: int, total: int, left: float | None = None) -> tuple[str | None, str, list[str]]:
+def _poll_payload(q: dict, idx: int, total: int, left: float | None = None,
+                  pick: str = "To'g'ri javobni tanlang ⬆️") -> tuple[str | None, str, list[str]]:
     """(oldindan yuboriladigan matn yoki None, poll savoli, poll variantlari)."""
     head = f"{idx + 1}/{total} · ⏳ {_fmt(left)}\n" if left is not None else f"{idx + 1}/{total}. "
     question = head + q["question"]
@@ -82,7 +83,7 @@ def _poll_payload(q: dict, idx: int, total: int, left: float | None = None) -> t
     # Telegram chegarasidan uzun: savol matni alohida xabarda, poll'da faqat harflar
     full = f"<b>{escape(head)}</b>{escape(q['question'])}\n\n" + \
            "\n".join(f"<b>{LETTERS[i]})</b> {escape(o)}" for i, o in enumerate(options))
-    return full, f"{head}To'g'ri javobni tanlang ⬆️", [LETTERS[i] for i in range(len(options))]
+    return full, f"{head}{pick}", [LETTERS[i] for i in range(len(options))]
 
 
 async def _send(bot: Bot, s: QuizSession):
