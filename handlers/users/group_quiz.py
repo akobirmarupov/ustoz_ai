@@ -58,7 +58,7 @@ async def control(call: CallbackQuery):
     if call.data == "gq:go":  # boshlashni guruhdagi istalgan odam bosa oladi
         s.started = True  # ikki kishi bir vaqtda bossa, ikki marta boshlanmasligi uchun
         await call.answer("Boshladik! 🚀")
-        await call.message.edit_reply_markup(reply_markup=None)
+        await gq.keep_on_top(call.bot, s, call.message)
         await gq.start(call.bot, s)
         return
     if not await gq.can_control(call.bot, s, call.from_user.id):

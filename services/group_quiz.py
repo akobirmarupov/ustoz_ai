@@ -17,7 +17,7 @@ from html import escape
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, PollAnswer
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, PollAnswer
 
 from data import config
 from services.quiz import _poll_payload
@@ -100,6 +100,22 @@ async def lobby(bot: Bot, s: GroupQuiz) -> tuple[str, InlineKeyboardMarkup]:
          InlineKeyboardButton(text="❌ Bekor qilish", callback_data="gq:cancel")],
         [await share_button(bot, s.part_id)]])
     return text, kb
+
+
+async def keep_on_top(bot: Bot, s: GroupQuiz, msg: Message):
+    """Boshlangan test e'loni guruhda qoladi: «📤 Boshqa guruhga» tugmasi bilan, tepaga mahkamlanadi."""
+    text = (f"🎲 <b>{escape(s.title)}</b>\n"
+            f"🖊 {len(s.questions)} ta savol · ⏱ har biriga {s.time_limit} soniya\n\n"
+            "▶️ Test ketmoqda! Bu testni o'z guruhingizda o'tkazish uchun pastdagi tugmani bosing 👇")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[await share_button(bot, s.part_id)]])
+    try:
+        await msg.edit_text(text, reply_markup=kb)
+    except TelegramAPIError as e:
+        log.info("E'lon tahrirlanmadi (%s): %s", s.chat_id, e)
+    try:  # botda «xabarlarni mahkamlash» huquqi bo'lmasa — shunchaki o'tkazib yuboriladi
+        await bot.pin_chat_message(s.chat_id, msg.message_id, disable_notification=True)
+    except TelegramAPIError as e:
+        log.info("E'lon mahkamlanmadi (%s): %s", s.chat_id, e)
 
 
 async def can_control(bot: Bot, s: GroupQuiz, user_id: int) -> bool:
