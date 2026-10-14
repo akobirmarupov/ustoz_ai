@@ -2,7 +2,9 @@
 
 Foydalanuvchi botda testni ochib «👥 Guruhda o'tkazish» ni bosadi → `?startgroup=` havolasi orqali botni guruhga
 qo'shadi → guruhda `/start g<part>_<imzo>` keladi → bot «▶️ Boshlash» tugmali e'lon yuboradi.
-Har bir savol vaqti tugaganda (yoki barcha ishtirokchilar javob berganda) keyingisiga o'tiladi.
+Boshlashni guruhdagi istalgan odam bosadi, «3, 2, 1» dan keyin savollar ketadi. Test faqat savollar tugaganda
+tugaydi. Har bir savol vaqti tugaganda (yoki barcha ishtirokchilar javob berganda) keyingisiga o'tiladi.
+«📤 Boshqa guruhga» tugmasi orqali istalgan a'zo testni o'z guruhiga olib keta oladi.
 Sessiyalar xotirada saqlanadi (bot qayta ishga tushsa, yarim test yo'qoladi).
 """
 import asyncio
@@ -24,11 +26,8 @@ log = logging.getLogger(__name__)
 
 NEXT_DELAY = 2       # hamma javob bergach, keyingi savoldan oldin pauza
 MIN_GAP = 4          # guruhga daqiqasiga ~20 xabar chegarasi: savollar orasida kamida shuncha soniya
-MAX_IDLE = 3         # ketma-ket shuncha savolga hech kim javob bermasa, test to'xtaydi
 TOP = 10
 MEDALS = ("🥇", "🥈", "🥉")
-
-STOP_KB = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⏹ To'xtatish", callback_data="gq:stop")]])
 
 
 def payload(part_id: int) -> str:
@@ -76,7 +75,6 @@ class GroupQuiz:
     players: dict[int, Player] = field(default_factory=dict)
     answered: set[int] = field(default_factory=set)  # hozirgi savolga javob berganlar
     expected: set[int] = field(default_factory=set)  # savol yuborilganda ma'lum bo'lgan qatnashchilar
-    idle: int = 0
 
 
 _by_chat: dict[int, GroupQuiz] = {}
@@ -87,15 +85,20 @@ def get(chat_id: int) -> GroupQuiz | None:
     return _by_chat.get(chat_id)
 
 
-def lobby(s: GroupQuiz) -> tuple[str, InlineKeyboardMarkup]:
+async def share_button(bot: Bot, part_id: int) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text="📤 Boshqa guruhga", url=await group_link(bot, part_id))
+
+
+async def lobby(bot: Bot, s: GroupQuiz) -> tuple[str, InlineKeyboardMarkup]:
     _by_chat[s.chat_id] = s
     text = (f"🎲 <b>{escape(s.title)}</b>\n"
             f"🖊 {len(s.questions)} ta savol · ⏱ har biriga {s.time_limit} soniya\n\n"
             "Javob bergan har bir guruh a'zosi reytingga kiradi. Teng natijada tezroq javob bergan yuqorida.\n\n"
-            "🏁 Testni qo'shgan odam yoki guruh admini «▶️ Boshlash» ni bossin.")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="▶️ Boshlash", callback_data="gq:go"),
-        InlineKeyboardButton(text="❌ Bekor qilish", callback_data="gq:cancel")]])
+            "🏁 Tayyor bo'lsangiz «▶️ Boshlash» ni bosing.")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="▶️ Boshlash", callback_data="gq:go"),
+         InlineKeyboardButton(text="❌ Bekor qilish", callback_data="gq:cancel")],
+        [await share_button(bot, s.part_id)]])
     return text, kb
 
 
@@ -117,7 +120,19 @@ def cancel(s: GroupQuiz):
 
 async def start(bot: Bot, s: GroupQuiz):
     s.started = True
-    await _call(bot.send_message, s.chat_id, f"🚀 <b>{escape(s.title)}</b> boshlandi! Omad 🍀")
+    head = f"🚀 <b>{escape(s.title)}</b> — boshladik!"
+    msg = await _call(bot.send_message, s.chat_id, f"{head}\n\n3️⃣")
+    for n in ("2️⃣", "1️⃣"):  # yangi xabar emas, tahrir — guruh xabar chegarasini sarflamaydi
+        await asyncio.sleep(1)
+        try:
+            await bot.edit_message_text(f"{head}\n\n{n}", chat_id=s.chat_id, message_id=msg.message_id)
+        except TelegramAPIError:
+            pass
+    await asyncio.sleep(1)
+    try:
+        await bot.edit_message_text(f"{head}\n\nOmad 🍀", chat_id=s.chat_id, message_id=msg.message_id)
+    except TelegramAPIError:
+        pass
     await _send(bot, s)
 
 
@@ -139,7 +154,7 @@ async def _send(bot: Bot, s: GroupQuiz):
             await _call(bot.send_message, s.chat_id, pre, protect_content=True)
         msg = await _call(bot.send_poll, s.chat_id, question=question, options=options, type="quiz",
                           correct_option_id=q["answer"], is_anonymous=False, open_period=limit,
-                          protect_content=True, reply_markup=STOP_KB)
+                          protect_content=True)
     except TelegramAPIError as e:
         log.warning("Guruhga savol yuborilmadi (%s): %s", s.chat_id, e)
         await finish(bot, s, note="⚠️ Savolni yuborib bo'lmadi (botda so'rovnoma yuborish huquqi bormi?).")
@@ -156,10 +171,6 @@ async def _advance(bot: Bot, s: GroupQuiz, idx: int, delay: float):
         return
     s.idx += 1  # boshqa taymer/javob shu savolni ikkinchi marta yopmasligi uchun darhol
     _by_poll.pop(s.poll_id, None)
-    s.idle = 0 if s.answered else s.idle + 1
-    if s.idle >= MAX_IDLE:
-        await finish(bot, s, note="😴 Ketma-ket bir necha savolga hech kim javob bermadi — test to'xtatildi.")
-        return
     if s.idx >= len(s.questions):
         await finish(bot, s)
         return
@@ -221,9 +232,10 @@ async def finish(bot: Bot, s: GroupQuiz, note: str = ""):
     if s.idx < len(s.questions):
         head += f" ({s.idx}/{len(s.questions)} savol)"
     text = head + (f"\n{note}" if note else "") + "\n\n" + leaderboard(s)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔁 Qayta o'tkazish", callback_data=f"gq:again:{s.part_id}")]])
     try:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔁 Qayta o'tkazish", callback_data=f"gq:again:{s.part_id}"),
+            await share_button(bot, s.part_id)]])
         await _call(bot.send_message, s.chat_id, text, reply_markup=kb)
     except TelegramAPIError as e:
         log.warning("Guruhga natija yuborilmadi (%s): %s", s.chat_id, e)

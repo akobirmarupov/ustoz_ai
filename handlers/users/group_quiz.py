@@ -27,7 +27,7 @@ async def _open_lobby(target: Message, part_id: int, owner_id: int):
     session = gq.GroupQuiz(chat_id=target.chat.id, owner_id=owner_id, part_id=part.id,
                            title=ts.part_title(part.number), questions=part.questions,
                            time_limit=ts.time_limit or 30)
-    text, kb = gq.lobby(session)
+    text, kb = await gq.lobby(target.bot, session)
     await target.answer(text, reply_markup=kb)
 
 
@@ -49,22 +49,21 @@ async def again(call: CallbackQuery):
     await _open_lobby(call.message, int(call.data.split(":")[2]), call.from_user.id)
 
 
-@router.callback_query(F.data.in_({"gq:go", "gq:cancel", "gq:stop"}))
+@router.callback_query(F.data.in_({"gq:go", "gq:cancel"}))
 async def control(call: CallbackQuery):
     s = gq.get(call.message.chat.id)
-    action = call.data.split(":")[1]
-    if not s or s.finished or (action != "stop" and s.started):
+    if not s or s.finished or s.started:
         await call.answer("Bu tugma eskirgan.", show_alert=True)
         return
-    if not await gq.can_control(call.bot, s, call.from_user.id):
-        await call.answer("Faqat testni qo'shgan odam yoki guruh admini boshqara oladi.", show_alert=True)
-        return
-    await call.answer()
-    if action == "go":
+    if call.data == "gq:go":  # boshlashni guruhdagi istalgan odam bosa oladi
+        s.started = True  # ikki kishi bir vaqtda bossa, ikki marta boshlanmasligi uchun
+        await call.answer("Boshladik! 🚀")
         await call.message.edit_reply_markup(reply_markup=None)
         await gq.start(call.bot, s)
-    elif action == "cancel":
-        gq.cancel(s)
-        await call.message.edit_text("❌ Test bekor qilindi.")
-    else:
-        await gq.finish(call.bot, s, note="⏹ Test to'xtatildi.")
+        return
+    if not await gq.can_control(call.bot, s, call.from_user.id):
+        await call.answer("Bekor qilishni faqat testni qo'shgan odam yoki guruh admini qila oladi.", show_alert=True)
+        return
+    await call.answer()
+    gq.cancel(s)
+    await call.message.edit_text("❌ Test bekor qilindi.")
