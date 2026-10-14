@@ -32,14 +32,14 @@ MAX_FILE_MB = 20  # Telegram bot API yuklab olish chegarasi
 
 # ---------- Narxlar (so'm) ----------
 PRICES = {
-    "slide": 20_000,
-    "referat": 20_000,
-    "mustaqil": 20_000,
-    "maqola": 40_000,
-    "kurs": 40_000,
-    "test": 54_000,         # AI orqali test tayyorlash
-    "test_auto": 45_000,    # avtomatik (AI'siz, javobli fayldan)
-    "test_manual": 45_000,  # qo'lda yozilgan test
+    "slide": 10_000,
+    "referat": 10_000,
+    "mustaqil": 10_000,
+    "maqola": 35_000,
+    "kurs": 35_000,
+    "test": 40_000,         # AI orqali test tayyorlash
+    "test_auto": 30_000,    # avtomatik (AI'siz, javobli fayldan)
+    "test_manual": 30_000,  # qo'lda yozilgan test
 }
 QUESTION_TIMES = (10, 15, 20, 30)  # har bir savolga soniya (quiz taymeri)
 
@@ -53,9 +53,9 @@ MIN_TOPUP, MAX_TOPUP = 5_000, 2_000_000
 FREE_DOC_KINDS = ("slide", "referat", "mustaqil")  # 2 tasi bepul (turi farqi yo'q)
 FREE_DOCS = 2
 
-QUESTIONS_PER_PART = 30          # javobsiz testlar 30 tadan bo'linadi
+QUESTIONS_PER_PART = 30          # eski to'plamlar uchun (savollar soni tanlanmagan bo'lsa)
 MAX_BOOK_PARTS = 20              # kitobchadan 1..20 qism
-BOOK_PART_SIZES = (20, 30, 35)   # har qismdagi savollar soni (student)
+TEST_PART_SIZES = (20, 30, 40, 50)  # student: har bir testdagi savollar soni (fayl shu sondan bo'linadi)
 ADMIN_BOOK_SIZES = (20, 30, 40)  # admin kitobchadan test tuzganda
 
 # ---------- Abituriyent tariflari ----------

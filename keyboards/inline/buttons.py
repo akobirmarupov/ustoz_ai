@@ -72,30 +72,39 @@ def parts_kb(prefix: str = "bparts") -> InlineKeyboardMarkup:
     return kb.adjust(5).as_markup()
 
 
-def per_part_kb() -> InlineKeyboardMarkup:
+def part_size_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    for n in config.BOOK_PART_SIZES:
-        kb.button(text=f"{n} ta savol", callback_data=f"bper:{n}")
-    return kb.adjust(3).as_markup()
+    for n in config.TEST_PART_SIZES:
+        kb.button(text=f"{n} ta savol", callback_data=f"tsize:{n}")
+    return kb.adjust(4).as_markup()
 
 
 PART_ICON = {"ready": "✅", "waiting": "🔒", "queued": "⏳", "failed": "⚠️"}
 
 
-def set_menu_kb(set_id: int, parts: list, unlocked: bool) -> InlineKeyboardMarkup:
+def set_menu_kb(ts, parts: list) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for p in parts:
-        kb.button(text=f"{PART_ICON.get(p.status, '⏳')} test_{p.number}", callback_data=f"tpart:{p.id}")
-    kb.adjust(3)
-    if not unlocked and any(p.status == "waiting" for p in parts):
-        kb.row(B(text="🔓 Ochish (to'lov)", callback_data=f"unlock:{set_id}"))
-    kb.row(B(text="🔄 Yangilash", callback_data=f"tset:{set_id}"))
+        kb.button(text=f"{PART_ICON.get(p.status, '⏳')} {ts.part_title(p.number)}", callback_data=f"tpart:{p.id}")
+    kb.adjust(2 if ts.name else 3)
+    if not ts.unlocked and any(p.status == "waiting" for p in parts):
+        kb.row(B(text="🔓 Ochish (to'lov)", callback_data=f"unlock:{ts.id}"))
+    kb.row(B(text="🔄 Yangilash", callback_data=f"tset:{ts.id}"))
     return kb.as_markup()
+
+
+def part_menu_kb(part_id: int, set_id: int, group_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [B(text="▶️ O'zim ishlayman", callback_data=f"tgo:{part_id}")],
+        [B(text="👥 Guruhda o'tkazish", url=group_url)],
+        [B(text="📋 Testlar ro'yxati", callback_data=f"tset:{set_id}")],
+    ])
 
 
 def after_test_kb(part_id: int, set_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [B(text="🔁 Qayta ishlash", callback_data=f"tpart:{part_id}")],
+        [B(text="🔁 Qayta ishlash", callback_data=f"tgo:{part_id}"),
+         B(text="👥 Guruhda", callback_data=f"tpart:{part_id}")],
         [B(text="📋 Testlar ro'yxati", callback_data=f"tset:{set_id}")],
     ])
 

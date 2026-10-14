@@ -105,14 +105,16 @@ async def process_test_prepare(bot: Bot, set_id: int):
                              "matnli PDF yoki Word fayl yuboring.")
 
     ready_qs: list[list[dict]] | None = None  # avtomatik usulda savollar darhol tayyor
+    size = ts.per_part or config.QUESTIONS_PER_PART  # 500 ta bo'lsa ham shu sondan bo'linadi, oxirgisi — qolgani
     if ts.source == "auto":
         questions, skipped = parse_tests(text)
         if not questions:
             raise PermanentError("Javoblari belgilangan testlar topilmadi. Har bir savolda to'g'ri javob "
                                  "belgilangan bo'lishi kerak (masalan *B) yoki «Javob: B» yoki oxirida javoblar kaliti).")
-        ready_qs = chunks(questions, config.QUESTIONS_PER_PART)
+        ready_qs = chunks(questions, size)
         sources = [""] * len(ready_qs)
-        info = f"📄 Fayldan <b>{len(questions)}</b> ta javobli test o'qildi → <b>{len(sources)}</b> ta qism."
+        info = (f"📄 Fayldan <b>{len(questions)}</b> ta javobli test o'qildi → <b>{len(sources)}</b> ta test "
+                f"(har birida {size} tagacha).")
         if skipped:
             info += f"\n⚠️ {skipped} ta savolda javob aniqlanmadi va tashlab ketildi."
     elif ts.source == "tests":
@@ -123,9 +125,9 @@ async def process_test_prepare(bot: Bot, set_id: int):
                 blocks += await ai.split_raw_questions(window)
         if not blocks:
             raise PermanentError("Fayldan testlar topilmadi.")
-        sources = ["\n\n".join(g) for g in chunks(blocks, config.QUESTIONS_PER_PART)]
-        info = (f"📄 Fayldan <b>{len(blocks)}</b> ta test topildi → <b>{len(sources)}</b> ta qism "
-                f"(har birida {config.QUESTIONS_PER_PART} tagacha).")
+        sources = ["\n\n".join(g) for g in chunks(blocks, size)]
+        info = (f"📄 Fayldan <b>{len(blocks)}</b> ta test topildi → <b>{len(sources)}</b> ta test "
+                f"(har birida {size} tagacha).")
     else:
         sources = split_book(text, ts.parts_count)
         info = f"📚 Kitobcha <b>{len(sources)}</b> qismga bo'lindi, har qismda <b>{ts.per_part}</b> ta savol bo'ladi."
@@ -161,10 +163,11 @@ async def process_test_prepare(bot: Bot, set_id: int):
         await _notify(bot, order.user_id, info + "\n\n⏳ Barcha qismlar tayyorlanmoqda, tayyor bo'lgach xabar beraman.")
     elif free:
         await enqueue("test_part", first_id)
-        await _notify(bot, order.user_id, info + "\n\n🎁 <b>test_1</b> bepul tayyorlanmoqda, tayyor bo'lgach xabar beraman.")
+        await _notify(bot, order.user_id, info + f"\n\n🎁 <b>{escape(ts.part_title(1))}</b> bepul tayyorlanmoqda, "
+                                                  "tayyor bo'lgach xabar beraman.")
     else:
         await _notify(bot, order.user_id, info)
-        await start_payment(bot, order.user_id, "order", order.price, f"Test: {ts.file_name}", order_id=order.id)
+        await start_payment(bot, order.user_id, "order", order.price, f"Test: {ts.title}", order_id=order.id)
 
 
 async def fail_test_prepare(bot: Bot, set_id: int, err: Exception):
@@ -196,11 +199,11 @@ async def _finish_if_complete(bot: Bot, ts: TestSet):
         order.status = "done"
         await s.commit()
     failed = [p.number for p in parts if p.status == "failed"]
-    text = "✅ <b>Barcha testlar tayyor!</b> Istalgan qismni tanlab ishlang 👇"
+    text = ("✅ <b>Barcha testlar tayyor!</b> Testni tanlab o'zingiz ishlang yoki guruhda o'tkazing 👇")
     if failed:
-        text += "\n\n⚠️ Tayyorlanmagan qismlar: " + ", ".join(f"test_{n}" for n in failed) + ". Admin xabardor."
+        text += "\n\n⚠️ Tayyorlanmagan qismlar: " + ", ".join(escape(ts.part_title(n)) for n in failed) + ". Admin xabardor."
         await _notify_admins(bot, f"⚠️ Test to'plami #{ts.id}: tayyorlanmagan qismlar {failed}")
-    await _notify(bot, ts.user_id, text, reply_markup=set_menu_kb(ts.id, parts, ts.unlocked))
+    await _notify(bot, ts.user_id, text, reply_markup=set_menu_kb(ts, parts))
 
 
 async def process_test_part(bot: Bot, part_id: int):
@@ -232,10 +235,10 @@ async def _announce_free_part(bot: Bot, ts: TestSet):
             order.status = "done"
             await s.commit()
     rest = len(parts) - 1
-    text = "🎁 <b>test_1 tayyor!</b> Bosing va ishlang 👇"
+    text = f"🎁 <b>{escape(ts.part_title(1))}</b> tayyor! Bosing va ishlang 👇"
     if rest:
         text += f"\n\nQolgan <b>{rest}</b> ta qismni ochish — <b>{order.price:,} so'm</b>.".replace(",", " ")
-    await _notify(bot, ts.user_id, text, reply_markup=set_menu_kb(ts.id, parts, ts.unlocked))
+    await _notify(bot, ts.user_id, text, reply_markup=set_menu_kb(ts, parts))
 
 
 async def fail_test_part(bot: Bot, part_id: int, err: Exception):

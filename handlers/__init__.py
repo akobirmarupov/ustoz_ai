@@ -1,14 +1,18 @@
-from aiogram import Router
+from aiogram import F, Router
 
 from handlers.admin import admin, broadcast, content, mocks
-from handlers.users import (abi_tests, abituriyent, balance, common, fallback, mistakes, mock, payments, quiz, rating,
-                            start, student, tests)
+from handlers.users import (abi_tests, abituriyent, balance, common, fallback, group_quiz, mistakes, mock, payments,
+                            quiz, rating, start, student, tests)
 
 
 def setup_handlers() -> Router:
     main_router = Router()
+    # Guruhlar: faqat guruhda test o'tkazish. Qolgan hamma narsa — faqat shaxsiy chatda
+    # (aks holda guruhdagi xabarlarga menyu, ro'yxatdan o'tish va h.k. javob berib yuboradi).
+    private = Router()
+    private.message.filter(F.chat.type == "private")
     # Tartib muhim: «Bekor qilish» va admin buyruqlari har qanday holatda birinchi ushlanadi
-    main_router.include_routers(
+    private.include_routers(
         start.router,
         quiz.router,
         admin.router,
@@ -27,4 +31,5 @@ def setup_handlers() -> Router:
         abituriyent.router,
         fallback.router,
     )
+    main_router.include_routers(group_quiz.router, private)
     return main_router

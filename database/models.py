@@ -98,10 +98,21 @@ class TestSet(Base):
     source: Mapped[str] = mapped_column(String(8))              # tests | book | auto (AI'siz)
     file_path: Mapped[str] = mapped_column(String(512))
     file_name: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(128), default="")  # foydalanuvchi bergan nom
     parts_count: Mapped[int] = mapped_column(Integer, default=0)
-    per_part: Mapped[int | None] = mapped_column(Integer)       # kitobcha uchun: 20/30/35
+    per_part: Mapped[int | None] = mapped_column(Integer)       # har bir qismdagi savollar soni: 20/30/40/50
     unlocked: Mapped[bool] = mapped_column(Boolean, default=False)
     time_limit: Mapped[int] = mapped_column(Integer, default=30)  # har bir savolga soniya
+
+    @property
+    def title(self) -> str:
+        return self.name or self.file_name
+
+    def part_title(self, number: int) -> str:
+        """«Matematika ko'paytirish 1», «... 2»; bitta qism bo'lsa — faqat nom; nomsiz eski to'plamlar — test_1."""
+        if not self.name:
+            return f"test_{number}"
+        return self.name if self.parts_count == 1 else f"{self.name} {number}"
 
 
 class TestPart(Base):

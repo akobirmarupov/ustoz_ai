@@ -17,8 +17,9 @@ from database.requests import enqueue, set_parts, user_test_sets
 from services.worker import _finish_if_complete
 from filters.filters import Registered
 from keyboards.default.menu import cancel_menu, student_menu
-from keyboards.inline.buttons import after_test_kb, parts_kb, per_part_kb, set_menu_kb, test_source_kb, time_kb
-from services import quiz
+from keyboards.inline.buttons import (after_test_kb, part_menu_kb, part_size_kb, parts_kb, set_menu_kb, test_source_kb,
+                                     time_kb)
+from services import group_quiz, quiz
 from services.parser import FORMAT_HELP, parse_tests
 from services.extract import SUPPORTED
 from services.payments import money, start_payment
@@ -38,10 +39,13 @@ async def test_start(message: Message, state: FSMContext, db_user):
         gift = "\n\n👑 Admin uchun bepul."
     await message.answer(
         "✅ <b>Test tayyorlash</b>\n\n"
-        "🤖 <b>AI: javobsiz testlar</b> — fayldagi testlarga AI javob topadi, 30 tadan qismlarga bo'linadi.\n"
+        "🤖 <b>AI: javobsiz testlar</b> — fayldagi testlarga AI javob topadi.\n"
         "🤖 <b>AI: kitobcha</b> — kitob matnidan AI siz tanlagan sondagi testlarni tuzadi.\n"
         "📄 <b>Avtomatik</b> — javoblari belgilangan tayyor testni quiz ko'rinishiga keltiradi.\n"
-        "✍️ <b>Qo'lda</b> — testga nom berib, savollarni o'zingiz yozasiz (20/30/40 ta).\n\n"
+        "✍️ <b>Qo'lda</b> — savollarni o'zingiz yozasiz.\n\n"
+        "📝 Testga nom berasiz va har bir testdagi savollar sonini tanlaysiz (20/30/40/50). Fayl shu sondan "
+        "bo'linadi: masalan «Matematika» → Matematika 1, Matematika 2 ...\n"
+        "👥 Tayyor testlarni o'zingiz ishlashingiz yoki Telegram guruhda o'tkazishingiz mumkin.\n\n"
         f"💰 AI orqali: <b>{money(config.PRICES['test'])}</b>\n"
         f"💰 Avtomatik va Qo'lda: <b>{money(config.PRICES['test_auto'])}</b>\n"
         "To'lov test tayyorlashdan oldin qilinadi." + gift,
@@ -53,16 +57,8 @@ async def test_source(call: CallbackQuery, state: FSMContext):
     source = call.data.split(":")[1]
     await state.update_data(source=source)
     await call.answer()
-    if source == "manual":
-        await state.set_state(TestOrder.name)
-        await call.message.edit_text("✍️ Test nomini yozing.\nMasalan: <b>Qisqa ko'paytirish formulalari</b>")
-        return
-    if source == "book":
-        await state.set_state(TestOrder.parts)
-        await call.message.edit_text("📚 Kitobchadan nechta qismli test tuzilsin? (test_1 ... test_n)",
-                                     reply_markup=parts_kb())
-    else:
-        await _ask_time(call, state)
+    await state.set_state(TestOrder.name)
+    await call.message.edit_text("✍️ Test nomini yozing.\nMasalan: <b>Matematika ko'paytirish</b>")
 
 
 async def _ask_time(call: CallbackQuery, state: FSMContext):
@@ -147,18 +143,39 @@ async def resume(call: CallbackQuery, state: FSMContext):
     await _begin(call.message, state, order)
 
 
+@router.message(TestOrder.name, F.text)
+async def test_name(message: Message, state: FSMContext):
+    name = message.text.strip()[:100]
+    if len(name) < 2:
+        await message.answer("Nom juda qisqa. Qaytadan yozing:")
+        return
+    await state.update_data(name=name)
+    await state.set_state(TestOrder.size)
+    if (await state.get_data())["source"] == "manual":
+        ask = "Testda nechta savol bo'lsin?"
+    else:
+        ask = (f"Har bir testda nechta savol bo'lsin?\n\n"
+               f"Masalan 40 ta tanlasangiz, 500 ta savol 40 tadan bo'linadi, oxirgisida qolgan 20 tasi bo'ladi:\n"
+               f"<i>{escape(name)} 1, {escape(name)} 2, ... {escape(name)} 13</i>")
+    await message.answer(f"📝 <b>{escape(name)}</b>\n\n{ask}", reply_markup=part_size_kb())
+
+
+@router.callback_query(TestOrder.size, F.data.startswith("tsize:"))
+async def test_size(call: CallbackQuery, state: FSMContext):
+    n = int(call.data.split(":")[1])
+    await state.update_data(size=n, per_part=n)
+    await call.answer()
+    if (await state.get_data())["source"] == "book":
+        await state.set_state(TestOrder.parts)
+        await call.message.edit_text(f"✅ Har birida {n} ta savol.\n\n📚 Kitobchadan nechta test tuzilsin?",
+                                     reply_markup=parts_kb())
+        return
+    await _ask_time(call, state)
+
+
 @router.callback_query(TestOrder.parts, F.data.startswith("bparts:"))
 async def book_parts(call: CallbackQuery, state: FSMContext):
-    n = int(call.data.split(":")[1])
-    await state.update_data(parts=n)
-    await state.set_state(TestOrder.per_part)
-    await call.answer()
-    await call.message.edit_text(f"✅ {n} ta qism.\n\nHar bir qismda nechta savol bo'lsin?", reply_markup=per_part_kb())
-
-
-@router.callback_query(TestOrder.per_part, F.data.startswith("bper:"))
-async def book_per_part(call: CallbackQuery, state: FSMContext):
-    await state.update_data(per_part=int(call.data.split(":")[1]))
+    await state.update_data(parts=int(call.data.split(":")[1]))
     await call.answer()
     await _ask_time(call, state)
 
@@ -188,9 +205,10 @@ async def test_file(message: Message, state: FSMContext):
 
     async with Session() as s:
         o = await s.get(Order, order.id)
-        o.status, o.title = "preparing", doc.file_name[:250]
+        o.status = "preparing"
         ts = TestSet(order_id=order.id, user_id=order.user_id, source=data["source"], file_path=str(path),
-                     file_name=doc.file_name[:250], parts_count=data.get("parts") or 0, per_part=data.get("per_part"),
+                     file_name=doc.file_name[:250], name=(data.get("name") or "")[:128],
+                     parts_count=data.get("parts") or 0, per_part=data.get("per_part"),
                      time_limit=data["time"], unlocked=True)
         s.add(ts)
         await s.commit()
@@ -219,35 +237,12 @@ async def unlock(call: CallbackQuery):
     await call.answer()
     async with Session() as s:
         order = await s.get(Order, ts.order_id)
-    await start_payment(call.bot, ts.user_id, "order", order.price, f"Test: {ts.file_name}", order_id=ts.order_id)
+    await start_payment(call.bot, ts.user_id, "order", order.price, f"Test: {ts.title}", order_id=ts.order_id)
 
 
 # ---------------- Qo'lda yozish ----------------
 
-def _size_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=f"{n} ta savol", callback_data=f"tsize:{n}") for n in config.ABI_TEST_SIZES]])
-
-
 DONE_KB = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Tugatish", callback_data="tman:done")]])
-
-
-@router.message(TestOrder.name, F.text)
-async def manual_name(message: Message, state: FSMContext):
-    name = message.text.strip()[:100]
-    if len(name) < 2:
-        await message.answer("Nom juda qisqa. Qaytadan yozing:")
-        return
-    await state.update_data(name=name)
-    await state.set_state(TestOrder.size)
-    await message.answer(f"📝 <b>{escape(name)}</b>\n\nTestda nechta savol bo'lsin?", reply_markup=_size_kb())
-
-
-@router.callback_query(TestOrder.size, F.data.startswith("tsize:"))
-async def manual_size(call: CallbackQuery, state: FSMContext):
-    await state.update_data(size=int(call.data.split(":")[1]))
-    await call.answer()
-    await _ask_time(call, state)
 
 
 async def _manual_progress(message: Message, state: FSMContext):
@@ -316,7 +311,7 @@ async def _manual_finish(message: Message, state: FSMContext, user_id: int):
         order = await s.get(Order, data["order_id"])
         order.status = "done"
         ts = TestSet(order_id=order.id, user_id=user_id, source="manual", file_path="", file_name=data["name"][:250],
-                     parts_count=1, time_limit=data["time"], unlocked=True)
+                     name=data["name"][:128], parts_count=1, time_limit=data["time"], unlocked=True)
         s.add(ts)
         await s.flush()
         s.add(TestPart(set_id=ts.id, number=1, questions=questions, status="ready"))
@@ -337,7 +332,7 @@ async def my_tests(message: Message):
     for ts in sets[:5]:
         parts = await set_parts(ts.id)
         if parts:
-            await message.answer(f"📄 <b>{escape(ts.file_name)}</b>", reply_markup=set_menu_kb(ts.id, parts, ts.unlocked))
+            await message.answer(f"📄 <b>{escape(ts.title)}</b>", reply_markup=set_menu_kb(ts, parts))
 
 
 @router.callback_query(F.data.startswith("tset:"))
@@ -350,13 +345,12 @@ async def show_set(call: CallbackQuery):
         return
     await call.answer()
     parts = await set_parts(set_id)
-    await call.message.answer(f"📄 <b>{escape(ts.file_name)}</b>", reply_markup=set_menu_kb(ts.id, parts, ts.unlocked))
+    await call.message.answer(f"📄 <b>{escape(ts.title)}</b>", reply_markup=set_menu_kb(ts, parts))
 
 
 # ---------------- Testni ishlash (quiz) ----------------
 
-@router.callback_query(F.data.startswith("tpart:"))
-async def start_part(call: CallbackQuery):
+async def _ready_part(call: CallbackQuery) -> tuple[TestPart, TestSet] | None:
     part_id = int(call.data.split(":")[1])
     async with Session() as s:
         part = await s.get(TestPart, part_id)
@@ -371,8 +365,29 @@ async def start_part(call: CallbackQuery):
         await call.answer("⏳ Bu qism hali tayyorlanmoqda.", show_alert=True)
         return
     await call.answer()
+    return part, ts
+
+
+@router.callback_query(F.data.startswith("tpart:"))
+async def part_menu(call: CallbackQuery):
+    if not (found := await _ready_part(call)):
+        return
+    part, ts = found
+    await call.message.answer(
+        f"📝 <b>{escape(ts.part_title(part.number))}</b>\n"
+        f"🖊 {len(part.questions)} ta savol · ⏱ har biriga {ts.time_limit} soniya\n\n"
+        "👥 <b>Guruhda o'tkazish</b>: tugmani bosib guruhni tanlang — bot guruhga qo'shiladi va testni boshlash "
+        "tugmasini yuboradi. Guruh a'zolari birga ishlaydi, oxirida reyting chiqadi.",
+        reply_markup=part_menu_kb(part.id, ts.id, await group_quiz.group_link(call.bot, part.id)))
+
+
+@router.callback_query(F.data.startswith("tgo:"))
+async def start_part(call: CallbackQuery):
+    if not (found := await _ready_part(call)):
+        return
+    part, ts = found
     await quiz.start(call.bot, quiz.QuizSession(
-        user_id=call.from_user.id, title=f"test_{part.number}", questions=part.questions,
+        user_id=call.from_user.id, title=ts.part_title(part.number), questions=part.questions,
         on_finish=_on_finish, time_limit=ts.time_limit or quiz.DEFAULT_TIME,
         meta={"part": part.id, "set": ts.id}))
 
