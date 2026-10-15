@@ -130,7 +130,7 @@ def plans_kb() -> InlineKeyboardMarkup:
 def grades_kb(items, prefix: str = "agr") -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for g in items:
-        kb.button(text=f"🏫 {g.name}", callback_data=f"{prefix}:{g.id}")
+        kb.button(text=f"📚 {g.name}", callback_data=f"{prefix}:{g.id}")
     return kb.adjust(2).as_markup()
 
 
@@ -138,9 +138,9 @@ def abi_subjects_kb(items, grade_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for subj, n in items:
         if n:
-            kb.button(text=f"📘 {subj.name}", callback_data=f"asb:{subj.id}")
+            kb.button(text=f"🏫 {subj.name}", callback_data=f"asb:{subj.id}")
     kb.adjust(2)
-    kb.row(B(text="⬅️ Sinflar", callback_data="abi:grades"))
+    kb.row(B(text="⬅️ Fanlar", callback_data="abi:grades"))
     return kb.as_markup()
 
 

@@ -1,4 +1,4 @@
-"""Abituriyent: sinf → fan → nomli test → «Tayyormisiz?» → quiz → keyingi test taklifi."""
+"""Abituriyent: fan → sinf (bo'lim) → nomli test → «Tayyormisiz?» → quiz → keyingi test taklifi."""
 from html import escape
 
 from aiogram import F, Router
@@ -21,12 +21,18 @@ router.callback_query.filter(Registered())
 PAGE = 10  # bir sahifadagi testlar soni
 
 
+def _order(subj: Subject) -> tuple:
+    """«8-sinf» < «10-sinf»: raqam bilan boshlanganlar son bo'yicha, qolganlari qo'shilgan tartibda."""
+    head = subj.name.split("-")[0].strip()
+    return (0, int(head)) if head.isdigit() else (1, subj.id)
+
+
 async def _show_grades(message: Message, edit: bool = False):
     items = await grades()
     if not items:
         await message.answer("Hozircha testlar qo'shilmagan. Tez orada qo'shiladi! 🙂")
         return
-    text = "🏫 Sinfni tanlang:"
+    text = "📚 Fanni tanlang:"
     if edit:
         await message.edit_text(text, reply_markup=grades_kb(items))
     else:
@@ -47,14 +53,14 @@ async def back_to_grades(call: CallbackQuery):
 @router.callback_query(F.data.startswith("agr:"))
 async def pick_grade(call: CallbackQuery):
     grade_id = int(call.data.split(":")[1])
-    items = await grade_subjects(grade_id)
+    items = sorted(await grade_subjects(grade_id), key=lambda r: _order(r[0]))
     await call.answer()
     if not any(n for _, n in items):
-        await call.message.edit_text("Bu sinfda hozircha testlar yo'q.", reply_markup=grades_kb(await grades()))
+        await call.message.edit_text("Bu fanda hozircha testlar yo'q.", reply_markup=grades_kb(await grades()))
         return
     async with Session() as s:
         grade = await s.get(Grade, grade_id)
-    await call.message.edit_text(f"🏫 <b>{escape(grade.name)}</b>\n\n📘 Fanni tanlang:",
+    await call.message.edit_text(f"📚 <b>{escape(grade.name)}</b>\n\n🏫 Sinfni tanlang:",
                                  reply_markup=abi_subjects_kb(items, grade_id))
 
 
@@ -68,7 +74,7 @@ def _tests_kb(subject_id: int, grade_id: int, tests: list, page: int) -> InlineK
         nav.append(InlineKeyboardButton(text="▶️", callback_data=f"asb:{subject_id}:{page + 1}"))
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton(text="⬅️ Fanlar", callback_data=f"agr:{grade_id}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Sinflar", callback_data=f"agr:{grade_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -78,10 +84,11 @@ async def pick_subject(call: CallbackQuery):
     subject_id, page = int(parts[1]), int(parts[2]) if len(parts) > 2 else 0
     async with Session() as s:
         subj = await s.get(Subject, subject_id)
+        grade = await s.get(Grade, subj.grade_id)
     tests = await subject_tests(subject_id)
     await call.answer()
     pages = f" · {page + 1}/{-(-len(tests) // PAGE)}-sahifa" if len(tests) > PAGE else ""
-    await call.message.edit_text(f"📘 <b>{escape(subj.name)}</b> — {len(tests)} ta test{pages}\n\nTestni tanlang:",
+    await call.message.edit_text(f"📚 <b>{escape(grade.name)} · {escape(subj.name)}</b> — {len(tests)} ta test{pages}\n\nTestni tanlang:",
                                  reply_markup=_tests_kb(subject_id, subj.grade_id, tests, page))
 
 
