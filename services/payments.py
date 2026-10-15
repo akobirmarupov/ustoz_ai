@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from data import config
 from data.constants import KIND_TITLES
 from database.db import Session
-from database.models import BalanceTx, Order, Payment, TestPart, TestSet, User
+from database.models import BalanceTx, GroupMock, Order, Payment, TestPart, TestSet, User
 from database.requests import add_balance, enqueue, new_payment, open_payment_for_order, spend_balance
 from keyboards.inline.buttons import admin_payment_kb, paid_kb
 
@@ -27,6 +27,8 @@ def payment_title(payment: Payment, order: Order | None) -> str:
         return "💰 Hisobni to'ldirish"
     if payment.purpose == "premium":
         return f"⭐️ Premium {config.PLANS[payment.plan]['name']} ({config.PLAN_DAYS} kun)"
+    if payment.purpose == "gmock":
+        return f"🧪 Guruh Mock #{payment.ref_id}"
     title = KIND_TITLES.get(order.kind, order.kind) if order else "Buyurtma"
     return f"{title}: {order.title}" if order and order.title else title
 
@@ -76,7 +78,7 @@ async def pay_from_balance(bot: Bot, payment_id: int, user_id: int) -> tuple[boo
 
 
 async def start_payment(bot: Bot, user_id: int, purpose: str, amount: int, title: str,
-                        order_id: int | None = None, plan: str | None = None) -> Payment:
+                        order_id: int | None = None, plan: str | None = None, ref_id: int | None = None) -> Payment:
     if order_id:
         existing = await open_payment_for_order(order_id)
         if existing:
@@ -86,7 +88,7 @@ async def start_payment(bot: Bot, user_id: int, purpose: str, amount: int, title
             order = await s.get(Order, order_id)
             order.status = "awaiting_payment"
             await s.commit()
-    payment = await new_payment(user_id, purpose, amount, order_id=order_id, plan=plan)
+    payment = await new_payment(user_id, purpose, amount, order_id=order_id, plan=plan, ref_id=ref_id)
     await send_instruction(bot, payment, title)
     return payment
 
@@ -133,6 +135,14 @@ async def approve(bot: Bot, payment_id: int, admin_id: int) -> tuple[bool, str]:
             user.plan_reminded = False
             msg = (f"✅ To'lov tasdiqlandi!\n\n⭐️ <b>{config.PLANS[p.plan]['name']}</b> tarifi "
                    f"<b>{user.plan_until:%d.%m.%Y}</b> gacha faollashtirildi. Omad! 🚀")
+        elif p.purpose == "gmock":
+            mock = await s.get(GroupMock, p.ref_id)
+            mock.paid = True
+            from services.group_quiz import mock_link  # aylana importdan qochish uchun
+            msg = (f"✅ To'lov tasdiqlandi!\n\n🧪 <b>{escape(mock.title)}</b> tayyor. Pastdagi tugma orqali botni "
+                   "guruhga qo'shing — Mock o'sha guruhda boshlanadi. Natijalar: «🧪 Mock imtihon» → «📂 Mening Mock'larim».")
+            follow_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text="👥 Guruhga qo'shish", url=await mock_link(bot, mock.id))]])
         else:
             order = await s.get(Order, p.order_id)
             ts = (await s.execute(select(TestSet).where(TestSet.order_id == order.id))).scalars().first() \
@@ -186,7 +196,7 @@ async def reject(bot: Bot, payment_id: int, admin_id: int, reason: str) -> tuple
             order.status = "awaiting_payment"
         await s.commit()
     title = payment_title(p, order)
-    retry = await new_payment(p.user_id, p.purpose, p.amount, order_id=p.order_id, plan=p.plan)
+    retry = await new_payment(p.user_id, p.purpose, p.amount, order_id=p.order_id, plan=p.plan, ref_id=p.ref_id)
     try:
         await send_instruction(bot, retry, title,
                                note=f"❌ To'lovingiz rad etildi.\nSabab: <b>{escape(reason)}</b>\n\n"

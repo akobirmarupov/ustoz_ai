@@ -11,6 +11,7 @@ from database.db import Session
 from database.models import Grade, Mock, MockAttempt, Subject
 from database.requests import effective_plan, grade_mocks, mocks_taken, random_questions
 from filters.filters import Registered
+from handlers.users import group_mock
 from handlers.users.abi_tests import save_result
 from keyboards.inline.buttons import plans_kb
 from services import quiz
@@ -40,15 +41,14 @@ async def mock_info(mock: Mock) -> tuple[str, int, float]:
 @router.message(F.text == BTN_MOCK)
 async def mocks_list(message: Message):
     mocks = await grade_mocks()
-    if not mocks:
-        await message.answer("🧪 Hozircha mock imtihonlar qo'shilmagan. Tez orada! 🙂")
-        return
     async with Session() as s:
         grades = {g: (await s.get(Grade, g)).name for g in {m.grade_id for m in mocks}}
     rows = [[InlineKeyboardButton(text=f"🧪 {grades[m.grade_id]} · {m.name}", callback_data=f"mock:{m.id}")]
             for m in mocks]
-    await message.answer("🧪 <b>Mock imtihon</b> — haqiqiy imtihon kabi, umumiy vaqt va ball bilan.\n\nTanlang:",
-                         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    text = ("🧪 <b>Mock imtihon</b> — haqiqiy imtihon kabi, umumiy vaqt va ball bilan.\n\nTanlang:" if mocks
+            else "🧪 Hozircha tayyor mock imtihonlar yo'q. Tez orada! 🙂")
+    text += "\n\n👨‍🏫 Ustozmisiz? O'z Mock'ingizni yarating va guruhingizda o'tkazing — oxirida reyting chiqadi."
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows + group_mock.entry_rows()))
 
 
 def _limit_text(plan: str) -> str:

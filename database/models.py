@@ -84,6 +84,7 @@ class Payment(Base):
     reject_reason: Mapped[str | None] = mapped_column(Text)
     method: Mapped[str] = mapped_column(String(16), default="manual")
     provider_txn_id: Mapped[str | None] = mapped_column(String(128))
+    ref_id: Mapped[int | None] = mapped_column(Integer)          # purpose=gmock: group_mocks.id
     admin_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -248,6 +249,39 @@ class Mock(Base):
     name: Mapped[str] = mapped_column(String(128))
     minutes: Mapped[int] = mapped_column(Integer, default=180)
     blocks: Mapped[list] = mapped_column(JSON, default=list)  # [{"subject_id", "count", "points"}]
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class GroupMock(Base):
+    """Ustoz yaratgan pullik Mock: savollar yaratilganda bir marta tanlanadi, guruhlarda o'tkaziladi."""
+    __tablename__ = "group_mocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    title: Mapped[str] = mapped_column(String(128))
+    questions: Mapped[list] = mapped_column(JSON, default=list)  # [{"question", "options", "answer", "points"}]
+    blocks: Mapped[list] = mapped_column(JSON, default=list)     # [{"title", "count", "points"}] — ko'rsatish uchun
+    time_limit: Mapped[int] = mapped_column(Integer, default=30)  # har bir savolga soniya
+    paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class GroupMockResult(Base):
+    """Guruhdagi Mock natijasi: har bir o'tkazish (run) va har bir qatnashchi uchun bitta qator."""
+    __tablename__ = "group_mock_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mock_id: Mapped[int] = mapped_column(ForeignKey("group_mocks.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str] = mapped_column(String(40), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    chat_title: Mapped[str] = mapped_column(String(128), default="")
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(128))
+    username: Mapped[str | None] = mapped_column(String(64))
+    correct: Mapped[int] = mapped_column(Integer, default=0)
+    ball: Mapped[float] = mapped_column(Float, default=0)
+    seconds: Mapped[float] = mapped_column(Float, default=0)
+    total: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

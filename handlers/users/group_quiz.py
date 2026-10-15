@@ -5,7 +5,7 @@ from aiogram.filters import CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 
 from database.db import Session
-from database.models import TestPart, TestSet
+from database.models import GroupMock, TestPart, TestSet
 from services import group_quiz as gq
 
 router = Router()
@@ -35,8 +35,28 @@ async def _open_lobby(target: Message, part_id: int, owner_id: int):
     await target.answer(text, reply_markup=kb)
 
 
+async def _open_mock_lobby(target: Message, mock_id: int):
+    if (old := gq.get(target.chat.id)) and not old.finished:
+        await target.answer("⏳ " + gq.RUNNING)
+        return
+    async with Session() as s:
+        mock = await s.get(GroupMock, mock_id)
+    if not mock or not mock.paid or not mock.questions:
+        await target.answer("⚠️ " + gq.SHORT.join(("Mock topilmadi yoki hali to'lanmagan", "Мок не найден или ещё не оплачен",
+                                                  "Mock not found or not paid yet")))
+        return
+    session = gq.GroupQuiz(chat_id=target.chat.id, owner_id=mock.owner_id, part_id=mock.id, title=mock.title,
+                           questions=mock.questions, time_limit=mock.time_limit or 30, kind="mock",
+                           chat_title=target.chat.title or "")
+    text, kb = await gq.lobby(target.bot, session)
+    await target.answer(text, reply_markup=kb)
+
+
 @router.message(CommandStart())
 async def group_start(message: Message, command: CommandObject):
+    if (mock_id := gq.parse_payload(command.args, "m")) is not None:
+        await _open_mock_lobby(message, mock_id)
+        return
     part_id = gq.parse_payload(command.args)
     if part_id is None:
         await message.answer(HOW_TO)
@@ -50,7 +70,11 @@ async def again(call: CallbackQuery):
         await call.answer(gq.RUNNING, show_alert=True)
         return
     await call.answer()
-    await _open_lobby(call.message, int(call.data.split(":")[2]), call.from_user.id)
+    ref = call.data.split(":")[2]
+    if ref.startswith("m"):
+        await _open_mock_lobby(call.message, int(ref[1:]))
+    else:
+        await _open_lobby(call.message, int(ref), call.from_user.id)
 
 
 @router.callback_query(F.data.in_({"gq:go", "gq:cancel"}))
@@ -61,6 +85,8 @@ async def control(call: CallbackQuery):
         return
     if call.data == "gq:go":  # Start'ni guruhdagi istalgan odam bosa oladi; 3 kishi yig'ilganda boshlanadi
         go = gq.press_start(s, call.from_user.id, call.from_user.full_name)
+        if s.is_mock and go is False and await gq.can_control(call.bot, s, call.from_user.id):
+            go = s.started = True  # Mock'ni ustoz yoki guruh admini darhol boshlay oladi
         if go is None:
             await call.answer(gq.ALREADY, show_alert=True)
             return

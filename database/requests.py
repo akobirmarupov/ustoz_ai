@@ -61,14 +61,15 @@ async def enqueue(kind: str, ref_id: int):
 
 
 async def new_payment(user_id: int, purpose: str, amount: int,
-                      order_id: int | None = None, plan: str | None = None) -> Payment:
+                      order_id: int | None = None, plan: str | None = None, ref_id: int | None = None) -> Payment:
     async with Session() as s:
         while True:
             code = f"UE-{random.randint(10000, 99999)}"
             exists = (await s.execute(select(Payment.id).where(Payment.code == code))).first()
             if not exists:
                 break
-        p = Payment(user_id=user_id, purpose=purpose, amount=amount, order_id=order_id, plan=plan, code=code)
+        p = Payment(user_id=user_id, purpose=purpose, amount=amount, order_id=order_id, plan=plan, code=code,
+                    ref_id=ref_id)
         s.add(p)
         await s.commit()
         return p

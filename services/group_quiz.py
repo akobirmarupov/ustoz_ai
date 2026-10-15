@@ -7,6 +7,10 @@ tugaydi. Har bir savol vaqti tugaganda (yoki barcha ishtirokchilar javob bergand
 «📤 Boshqa guruhga» tugmasi orqali istalgan a'zo testni o'z guruhiga olib keta oladi.
 Guruhdagi barcha matnlar uch tilda: o'zbek, rus, ingliz.
 Sessiyalar xotirada saqlanadi (bot qayta ishga tushsa, yarim test yo'qoladi).
+
+Ustoz yaratgan pullik Mock (`kind="mock"`) ham shu yerda o'tadi: savollar ballli, Start'ni ustoz yoki guruh
+admini bossa darhol boshlanadi, reytingda hamma qatnashchilar (@username bilan) chiqadi va natija bazaga
+har savoldan keyin yoziladi — bot qayta ishga tushsa ham shu paytgacha bo'lgan natija yo'qolmaydi.
 """
 import asyncio
 import hashlib
@@ -20,7 +24,11 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, PollAnswer
 
+from sqlalchemy import delete
+
 from data import config
+from database.db import Session
+from database.models import GroupMockResult
 from services.quiz import _poll_payload
 
 log = logging.getLogger(__name__)
@@ -46,17 +54,18 @@ RUNNING = SHORT.join(("Bu guruhda test ketmoqda", "В этой группе уж
 ONLY_OWNER = SHORT.join(("Faqat test egasi yoki admin", "Только владелец теста или админ", "Only the quiz owner or an admin"))
 
 
-def payload(part_id: int) -> str:
-    """Guruh havolasi uchun imzolangan kod: begona odam boshqa birovning testini raqam bilan ocholmasligi uchun."""
-    sig = hmac.new(config.BOT_TOKEN.encode(), f"g{part_id}".encode(), hashlib.sha256).hexdigest()[:10]
-    return f"g{part_id}_{sig}"
+def payload(ref_id: int, kind: str = "g") -> str:
+    """Guruh havolasi uchun imzolangan kod: begona odam boshqa birovning testini raqam bilan ocholmasligi uchun.
+    kind: «g» — talaba testi qismi (TestPart), «m» — ustozning guruh Mock'i (GroupMock)."""
+    sig = hmac.new(config.BOT_TOKEN.encode(), f"{kind}{ref_id}".encode(), hashlib.sha256).hexdigest()[:10]
+    return f"{kind}{ref_id}_{sig}"
 
 
-def parse_payload(arg: str | None) -> int | None:
-    if not arg or not arg.startswith("g") or "_" not in arg:
+def parse_payload(arg: str | None, kind: str = "g") -> int | None:
+    if not arg or not arg.startswith(kind) or "_" not in arg:
         return None
-    num = arg[1:].split("_", 1)[0]
-    if not num.isdigit() or not hmac.compare_digest(payload(int(num)), arg):
+    num = arg[len(kind):].split("_", 1)[0]
+    if not num.isdigit() or not hmac.compare_digest(payload(int(num), kind), arg):
         return None
     return int(num)
 
@@ -66,11 +75,22 @@ async def group_link(bot: Bot, part_id: int) -> str:
     return f"https://t.me/{me.username}?startgroup={payload(part_id)}"
 
 
+async def mock_link(bot: Bot, mock_id: int) -> str:
+    me = await bot.me()
+    return f"https://t.me/{me.username}?startgroup={payload(mock_id, 'm')}"
+
+
 @dataclass
 class Player:
     name: str
+    username: str | None = None
     correct: int = 0
+    ball: float = 0.0
     seconds: float = 0.0  # to'g'ri javoblarga ketgan vaqt (teng ochkoda tezroq yuqorida)
+
+    @property
+    def label(self) -> str:
+        return f"@{self.username}" if self.username else self.name
 
 
 @dataclass
@@ -92,6 +112,18 @@ class GroupQuiz:
     players: dict[int, Player] = field(default_factory=dict)
     answered: set[int] = field(default_factory=set)  # hozirgi savolga javob berganlar
     expected: set[int] = field(default_factory=set)  # savol yuborilganda ma'lum bo'lgan qatnashchilar
+    kind: str = "test"     # test | mock
+    chat_title: str = ""
+    run_id: str = ""       # mock: natijalar shu kalit bilan bazaga yoziladi
+
+    @property
+    def is_mock(self) -> bool:
+        return self.kind == "mock"
+
+    @property
+    def code(self) -> str:
+        """Guruh havolasidagi kod (part_id mock uchun — group_mocks.id)."""
+        return payload(self.part_id, "m" if self.is_mock else "g")
 
 
 _by_chat: dict[int, GroupQuiz] = {}
@@ -102,28 +134,47 @@ def get(chat_id: int) -> GroupQuiz | None:
     return _by_chat.get(chat_id)
 
 
-async def share_button(bot: Bot, part_id: int) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text="📤 Share", url=await group_link(bot, part_id))
+async def share_button(bot: Bot, s: GroupQuiz) -> InlineKeyboardButton:
+    me = await bot.me()
+    return InlineKeyboardButton(text="📤 Share", url=f"https://t.me/{me.username}?startgroup={s.code}")
+
+
+def _max_ball(s: GroupQuiz) -> float:
+    return sum(q.get("points", 1) for q in s.questions)
+
+
+def fmt_ball(x: float) -> str:
+    return f"{x:.1f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
 def _head(s: GroupQuiz) -> str:
-    return f"🎲 <b>{escape(s.title)}</b>\n🖊 {len(s.questions)} · ⏱ {s.time_limit} s"
+    head = f"{'🧪' if s.is_mock else '🎲'} <b>{escape(s.title)}</b>\n🖊 {len(s.questions)} · ⏱ {s.time_limit} s"
+    return head + (f" · 🎯 {fmt_ball(_max_ball(s))}" if s.is_mock else "")
 
 
 async def lobby(bot: Bot, s: GroupQuiz) -> tuple[str, InlineKeyboardMarkup]:
     _by_chat[s.chat_id] = s
     n = START_VOTES
-    text = _head(s) + "\n\n" + tr(
-        f"Test {n} kishi «Start» ni bosganda boshlanadi. Javob bergan har bir a'zo reytingga kiradi.",
-        f"Тест начнётся, когда {n} человека нажмут «Start». Каждый ответивший попадает в рейтинг.",
-        f"The quiz starts when {n} people press «Start». Everyone who answers gets on the leaderboard.")
+    if s.is_mock:
+        text = _head(s) + "\n\n" + tr(
+            f"Mock ustoz yoki guruh admini «Start» ni bosganda (yoki {n} kishi bosganda) boshlanadi. "
+            "Javob bergan har bir a'zo reytingga kiradi.",
+            f"Мок начнётся, когда «Start» нажмёт учитель или админ группы (или {n} человека). "
+            "Каждый ответивший попадает в рейтинг.",
+            f"The mock starts when the teacher or a group admin presses «Start» (or {n} people do). "
+            "Everyone who answers gets on the leaderboard.")
+    else:
+        text = _head(s) + "\n\n" + tr(
+            f"Test {n} kishi «Start» ni bosganda boshlanadi. Javob bergan har bir a'zo reytingga kiradi.",
+            f"Тест начнётся, когда {n} человека нажмут «Start». Каждый ответивший попадает в рейтинг.",
+            f"The quiz starts when {n} people press «Start». Everyone who answers gets on the leaderboard.")
     if s.ready:
         text += (f"\n\n✅ Tayyor / Готовы / Ready ({len(s.ready)}/{n}): "
                  + ", ".join(escape(name) for name in s.ready.values()))
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"▶️ Start ({len(s.ready)}/{n})", callback_data="gq:go"),
          InlineKeyboardButton(text="❌ Cancel", callback_data="gq:cancel")],
-        [await share_button(bot, s.part_id)]])
+        [await share_button(bot, s)]])
     return text, kb
 
 
@@ -144,7 +195,7 @@ async def keep_on_top(bot: Bot, s: GroupQuiz, msg: Message):
         "▶️ Test ketmoqda! O'z guruhingizda o'tkazish uchun pastdagi tugmani bosing 👇",
         "▶️ Тест идёт! Чтобы провести его в своей группе, нажмите кнопку ниже 👇",
         "▶️ The quiz is on! To run it in your own group, press the button below 👇")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[await share_button(bot, s.part_id)]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[await share_button(bot, s)]])
     try:
         await msg.edit_text(text, reply_markup=kb)
     except TelegramAPIError as e:
@@ -173,6 +224,8 @@ def cancel(s: GroupQuiz):
 
 async def start(bot: Bot, s: GroupQuiz):
     s.started = True
+    if s.is_mock:
+        s.run_id = f"{s.chat_id}:{int(time.time())}"
     head = f"🚀 <b>{escape(s.title)}</b>\n" + SHORT.join(("Boshladik!", "Начинаем!", "Let's go!"))
     msg = await _call(bot.send_message, s.chat_id, f"{head}\n\n3️⃣")
     for n in ("2️⃣", "1️⃣"):  # yangi xabar emas, tahrir — guruh xabar chegarasini sarflamaydi
@@ -227,6 +280,7 @@ async def _advance(bot: Bot, s: GroupQuiz, idx: int, delay: float):
         return
     s.idx += 1  # boshqa taymer/javob shu savolni ikkinchi marta yopmasligi uchun darhol
     _by_poll.pop(s.poll_id, None)
+    await save_results(s)
     if s.idx >= len(s.questions):
         await finish(bot, s)
         return
@@ -247,8 +301,11 @@ async def on_answer(bot: Bot, answer: PollAnswer) -> bool:
         return True
     s.answered.add(user.id)
     p = s.players.setdefault(user.id, Player(name=user.full_name))
-    if answer.option_ids[0] == s.questions[s.idx]["answer"]:
+    p.name, p.username = user.full_name, user.username  # ism/username o'zgargan bo'lsa ham eng yangisi
+    q = s.questions[s.idx]
+    if answer.option_ids[0] == q["answer"]:
         p.correct += 1
+        p.ball += q.get("points", 1)
         p.seconds += time.monotonic() - s.sent_at
     # Oldingi savollarda qatnashganlarning hammasi javob berdi — vaqt tugashini kutmaymiz
     if s.expected and s.answered >= s.expected:
@@ -262,17 +319,55 @@ async def on_answer(bot: Bot, answer: PollAnswer) -> bool:
     return True
 
 
+def ranked(s: GroupQuiz) -> list[Player]:
+    return sorted(s.players.values(), key=lambda p: (-p.ball, -p.correct, p.seconds))
+
+
+def rank_line(i: int, label: str, correct: int, total: int, seconds: float, ball: float | None = None) -> str:
+    place = MEDALS[i] if i < len(MEDALS) else f"{i + 1}."
+    score = f"<b>{fmt_ball(ball)}</b> · {correct}/{total}" if ball is not None else f"<b>{correct}/{total}</b>"
+    return f"{place} {escape(label)} — {score} ({seconds:.1f} s)"
+
+
 def leaderboard(s: GroupQuiz) -> str:
+    """Oddiy test — eng yaxshi 10 tasi; Mock — hamma qatnashchilar (o'rtada chiqib ketganlar ham)."""
     total = len(s.questions)
-    ranked = sorted(s.players.values(), key=lambda p: (-p.correct, p.seconds))
-    if not ranked:
+    rows = ranked(s)
+    if not rows:
         return SHORT.join(("Hech kim qatnashmadi", "Никто не участвовал", "Nobody took part"))
-    lines = []
-    for i, p in enumerate(ranked[:TOP]):
-        place = MEDALS[i] if i < len(MEDALS) else f"{i + 1}."
-        lines.append(f"{place} {escape(p.name)} — <b>{p.correct}/{total}</b> ({p.seconds:.1f} s)")
-    more = f"\n… +{len(ranked) - TOP}" if len(ranked) > TOP else ""
-    return f"👥 Qatnashchilar / Участники / Players: <b>{len(ranked)}</b>\n\n" + "\n".join(lines) + more
+    shown = rows if s.is_mock else rows[:TOP]
+    lines = [rank_line(i, p.label, p.correct, total, p.seconds, p.ball if s.is_mock else None)
+             for i, p in enumerate(shown)]
+    more = f"\n… +{len(rows) - len(shown)}" if len(rows) > len(shown) else ""
+    return f"👥 Qatnashchilar / Участники / Players: <b>{len(rows)}</b>\n\n" + "\n".join(lines) + more
+
+
+def split_text(text: str, limit: int = 4000) -> list[str]:
+    """Telegram xabari 4096 belgidan oshmasligi uchun qatorlar bo'yicha bo'ladi."""
+    parts, cur = [], ""
+    for line in text.split("\n"):
+        if cur and len(cur) + len(line) + 1 > limit:
+            parts.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    return parts + ([cur] if cur else [])
+
+
+async def save_results(s: GroupQuiz):
+    """Mock natijasini bazaga yozadi (har savoldan keyin qayta yoziladi — bot to'xtasa ham yo'qolmaydi)."""
+    if not s.is_mock or not s.run_id or not s.players:
+        return
+    try:
+        async with Session() as db:
+            await db.execute(delete(GroupMockResult).where(GroupMockResult.run_id == s.run_id))
+            db.add_all(GroupMockResult(
+                mock_id=s.part_id, run_id=s.run_id, chat_id=s.chat_id, chat_title=s.chat_title[:128], user_id=uid,
+                name=p.name[:128], username=p.username, correct=p.correct, ball=round(p.ball, 2),
+                seconds=round(p.seconds, 1), total=len(s.questions)) for uid, p in s.players.items())
+            await db.commit()
+    except Exception as e:  # natijani saqlay olmasak ham test davom etsin
+        log.warning("Mock natijasi saqlanmadi (%s): %s", s.run_id, e)
 
 
 async def finish(bot: Bot, s: GroupQuiz, note: str = ""):
@@ -288,10 +383,21 @@ async def finish(bot: Bot, s: GroupQuiz, note: str = ""):
     if s.idx < len(s.questions):
         head += f" ({s.idx}/{len(s.questions)})"
     text = head + (f"\n{note}" if note else "") + "\n\n" + leaderboard(s)
+    await save_results(s)
+    again = f"gq:again:m{s.part_id}" if s.is_mock else f"gq:again:{s.part_id}"
+    chunks = split_text(text)
     try:
+        for chunk in chunks[:-1]:
+            await _call(bot.send_message, s.chat_id, chunk)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔁 Again", callback_data=f"gq:again:{s.part_id}"),
-            await share_button(bot, s.part_id)]])
-        await _call(bot.send_message, s.chat_id, text, reply_markup=kb)
+            InlineKeyboardButton(text="🔁 Again", callback_data=again), await share_button(bot, s)]])
+        await _call(bot.send_message, s.chat_id, chunks[-1], reply_markup=kb)
     except TelegramAPIError as e:
         log.warning("Guruhga natija yuborilmadi (%s): %s", s.chat_id, e)
+    if s.is_mock:  # ustozga natija shaxsiy chatda ham
+        try:
+            where = f"👥 {escape(s.chat_title)}\n" if s.chat_title else ""
+            for chunk in split_text(where + text):
+                await _call(bot.send_message, s.owner_id, chunk)
+        except TelegramAPIError as e:
+            log.info("Ustozga natija yuborilmadi (%s): %s", s.owner_id, e)

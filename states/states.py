@@ -62,6 +62,12 @@ class AdminMock(StatesGroup):
     building = State()
 
 
+class GroupMockBuild(StatesGroup):
+    title = State()
+    building = State()
+    file = State()
+
+
 class Broadcast(StatesGroup):
     message = State()
     confirm = State()
