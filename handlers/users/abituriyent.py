@@ -23,11 +23,11 @@ PLANS_TEXT = (
     "⭐️ <b>Premium tariflar</b> (30 kun)\n\n"
     "🆓 <b>Bepul</b> — kuniga 3 ta test, 3 ta AI savol, oyiga 1 ta mock\n\n"
     "🔹 <b>Basic — 20 000 so'm</b>\n"
-    "Kuniga 5 ta test, 15 ta AI savol, haftasiga 1 ta mock\n\n"
+    "Kuniga 5 ta test, 15 ta AI savol, haftasiga 1 ta mock, oyiga 10 ta test yaratish\n\n"
     "⭐️ <b>Pro — 30 000 so'm</b> (eng ommabop)\n"
-    "Kuniga 9 ta test, 40 ta AI savol, haftasiga 3 ta mock\n\n"
+    "Kuniga 9 ta test, 40 ta AI savol, haftasiga 3 ta mock, oyiga 20 ta test yaratish\n\n"
     "💎 <b>Max Pro — 40 000 so'm</b>\n"
-    "Cheksiz test, cheksiz AI savol, cheksiz mock"
+    "Cheksiz test, cheksiz AI savol, cheksiz mock, oyiga 30 ta test yaratish"
 )
 
 
@@ -35,7 +35,7 @@ PLANS_TEXT = (
 async def home(message: Message, state: FSMContext, db_user):
     await state.clear()
     plan = config.PLANS[effective_plan(db_user)]["name"]
-    await message.answer(f"🎓 <b>Abituriyent bo'limi</b>\nFanlar: Matematika, Ingliz tili\nTarifingiz: <b>{plan}</b>",
+    await message.answer(f"🎓 <b>Abituriyent bo'limi</b>\nTarifingiz: <b>{plan}</b>",
                          reply_markup=abituriyent_menu())
 
 

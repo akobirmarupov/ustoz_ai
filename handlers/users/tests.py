@@ -1,6 +1,7 @@
 """Test tayyorlash (javobsiz testlar yoki kitobcha) va testni bot ichida ishlash."""
 import re
 import time
+from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 
@@ -8,17 +9,18 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 
 from data import config
-from data.constants import BTN_TEST
+from data.constants import BTN_CREATE, BTN_TEST
 from database.db import Session
 from database.models import Order, TestPart, TestSet, User
-from database.requests import enqueue, set_parts, user_test_sets
+from database.requests import effective_plan, enqueue, set_parts, user_test_sets
 from services.worker import _finish_if_complete
 from filters.filters import Registered
-from keyboards.default.menu import cancel_menu, student_menu
-from keyboards.inline.buttons import (after_test_kb, part_menu_kb, part_size_kb, parts_kb, set_menu_kb, test_source_kb,
-                                     time_kb)
+from keyboards.default.menu import abituriyent_menu, cancel_menu, student_menu
+from keyboards.inline.buttons import (after_test_kb, part_menu_kb, part_size_kb, parts_kb, plans_kb, set_menu_kb,
+                                     test_source_kb, time_kb)
 from services import group_quiz, quiz
 from services.parser import FORMAT_HELP, parse_tests
 from services.extract import SUPPORTED
@@ -52,6 +54,40 @@ async def test_start(message: Message, state: FSMContext, db_user):
         reply_markup=test_source_kb())
 
 
+@router.message(F.text == BTN_CREATE)
+async def abi_create(message: Message, state: FSMContext, db_user):
+    """Abituriyent «✍️ Test yaratish»: oddiy test (obuna ichida) yoki guruh Mock'i (alohida 50 000)."""
+    await state.clear()
+    plan = effective_plan(db_user)
+    limit = config.PLANS[plan]["create"]
+    quota = (f"Sizning tarifingiz (<b>{config.PLANS[plan]['name']}</b>): 30 kunda <b>{limit}</b> ta, "
+             f"ishlatilgan: <b>{await abi_created(db_user.id)}</b>" if limit else abi_limit_text(plan, 0))
+    await message.answer(
+        "✍️ <b>Test yaratish</b>\n\n"
+        "📝 <b>Oddiy test</b> — faylingizdan yoki qo'lda test tayyorlanadi (AI, avtomatik yoki qo'lda). "
+        "Tayyor testni o'zingiz ishlaysiz yoki guruhda o'tkazasiz. Obuna ichida, alohida to'lovsiz.\n"
+        f"{quota}\n\n"
+        f"🧪 <b>Mock</b> — guruh uchun ballli imtihon, oxirida reyting. Alohida to'lov: "
+        f"<b>{money(config.GROUP_MOCK_PRICE)}</b>.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Oddiy test", callback_data="abi:test")],
+            [InlineKeyboardButton(text=f"🧪 Mock ({money(config.GROUP_MOCK_PRICE)})", callback_data="gm:new")]]))
+
+
+@router.callback_query(F.data == "abi:test")
+async def abi_test(call: CallbackQuery, state: FSMContext, db_user):
+    plan = effective_plan(db_user)
+    used = await abi_created(db_user.id)
+    if db_user.id not in config.ADMINS and used >= config.PLANS[plan]["create"]:
+        await call.answer()
+        await call.message.answer(abi_limit_text(plan, used), reply_markup=plans_kb())
+        return
+    await state.clear()
+    await state.update_data(abi=True)
+    await call.answer()
+    await call.message.edit_text("📝 <b>Oddiy test</b> — qanday tayyorlaymiz?", reply_markup=test_source_kb())
+
+
 @router.callback_query(F.data.startswith("tsrc:"))
 async def test_source(call: CallbackQuery, state: FSMContext):
     source = call.data.split(":")[1]
@@ -67,7 +103,7 @@ async def _ask_time(call: CallbackQuery, state: FSMContext):
 
 
 PRICE_KEY = {"auto": "test_auto", "manual": "test_manual"}  # qolganlari (AI) — "test"
-ORDER_FIELDS = ("source", "time", "parts", "per_part", "name", "size")
+ORDER_FIELDS = ("source", "time", "parts", "per_part", "name", "size", "abi")
 
 
 @router.callback_query(TestOrder.time, F.data.startswith("ttime:"))
@@ -76,6 +112,9 @@ async def test_time(call: CallbackQuery, state: FSMContext):
     await call.answer()
     data = await state.get_data()
     await state.clear()
+    if data.get("abi") and call.from_user.id not in config.ADMINS:
+        await _abi_order(call, state, data)
+        return
     async with Session() as s:
         user = await s.get(User, call.from_user.id)
         is_admin = user.id in config.ADMINS
@@ -97,6 +136,46 @@ async def test_time(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(f"💳 Test tayyorlash pullik. To'lov tasdiqlangach {what}.")
     await start_payment(call.bot, order.user_id, "order", order.price, KIND_LABEL.get(data["source"], "Test"),
                         order_id=order.id)
+
+
+async def _abi_order(call: CallbackQuery, state: FSMContext, data: dict):
+    """Abituriyent «✍️ Test yaratish»: alohida to'lov yo'q — obuna limitidan (30 kunda N ta) yechiladi."""
+    async with Session() as s:
+        user = await s.get(User, call.from_user.id)
+    plan = effective_plan(user)
+    limit = config.PLANS[plan]["create"]
+    used = await abi_created(user.id)
+    if used >= limit:
+        await call.message.edit_text(abi_limit_text(plan, used) + "\n\nTarifni oshiring 👇", reply_markup=plans_kb())
+        return
+    async with Session() as s:
+        order = Order(user_id=user.id, kind="test", is_free=True, price=0, title=(data.get("name") or "Test")[:250],
+                      status="paid", params={k: data.get(k) for k in ORDER_FIELDS} | {"admin": False, "free": False})
+        s.add(order)
+        await s.commit()
+    await call.message.edit_text(f"⭐️ Obunangiz bo'yicha: {used + 1}/{limit} (30 kun ichida)")
+    await _begin(call.message, state, order)
+
+
+async def abi_created(user_id: int) -> int:
+    """Oxirgi 30 kunda obuna hisobidan yaratilgan oddiy testlar soni."""
+    since = datetime.now() - timedelta(days=config.PLAN_DAYS)
+    async with Session() as s:
+        rows = (await s.execute(select(Order.params).where(
+            Order.user_id == user_id, Order.kind == "test", Order.created_at >= since))).scalars().all()
+    return sum(1 for p in rows if (p or {}).get("abi"))
+
+
+def abi_limit_text(plan: str, used: int) -> str:
+    limit = config.PLANS[plan]["create"]
+    if not limit:
+        return ("🔒 Test yaratish obunachilar uchun:\n"
+                "🔹 Basic — oyiga 10 ta · ⭐️ Pro — 20 ta · 💎 Max Pro — 30 ta")
+    return f"⏳ Bu oy uchun test yaratish limiti tugadi: {used}/{limit}."
+
+
+def _menu(data: dict):
+    return abituriyent_menu() if data.get("abi") else student_menu()
 
 
 KIND_LABEL = {"tests": "Test: AI javob topadi", "book": "Test: AI kitobchadan tuzadi",
@@ -215,7 +294,7 @@ async def test_file(message: Message, state: FSMContext):
 
     await enqueue("test_prepare", ts.id)
     await message.answer("⏳ Fayl qabul qilindi va o'qilmoqda. Natijani shu yerga yuboraman.",
-                         reply_markup=student_menu())
+                         reply_markup=_menu(data))
 
 
 @router.message(TestOrder.file)
@@ -317,7 +396,7 @@ async def _manual_finish(message: Message, state: FSMContext, user_id: int):
         s.add(TestPart(set_id=ts.id, number=1, questions=questions, status="ready"))
         await s.commit()
     await message.answer(f"🏁 <b>{escape(data['name'])}</b> saqlandi: {len(questions)} ta savol.",
-                         reply_markup=student_menu())
+                         reply_markup=_menu(data))
     await _finish_if_complete(message.bot, ts)
 
 

@@ -62,13 +62,17 @@ ADMIN_BOOK_SIZES = (20, 30, 40)  # admin kitobchadan test tuzganda
 PLAN_DAYS = 30
 # tests — kuniga ishlash mumkin bo'lgan nomli testlar (None = cheksiz), ai_chat — AI ustozga savollar
 # mock — (nechta, necha kunda): (1, 30) = oyiga 1 ta; None = cheksiz
+# create — Abituriyent «✍️ Test yaratish»: 30 kunda nechta oddiy test tayyorlash mumkin (obuna ichida, alohida to'lovsiz)
 PLANS = {
-    "free": {"name": "Bepul", "price": 0, "tests": 3, "ai_chat": 3, "mock": (1, 30)},
-    "basic": {"name": "Basic", "price": 20_000, "tests": 5, "ai_chat": 15, "mock": (1, 7)},
-    "pro": {"name": "Pro", "price": 30_000, "tests": 9, "ai_chat": 40, "mock": (3, 7)},
-    "max": {"name": "Max Pro", "price": 40_000, "tests": None, "ai_chat": None, "mock": None},
+    "free": {"name": "Bepul", "price": 0, "tests": 3, "ai_chat": 3, "mock": (1, 30), "create": 0},
+    "basic": {"name": "Basic", "price": 20_000, "tests": 5, "ai_chat": 15, "mock": (1, 7), "create": 10},
+    "pro": {"name": "Pro", "price": 30_000, "tests": 9, "ai_chat": 40, "mock": (3, 7), "create": 20},
+    "max": {"name": "Max Pro", "price": 40_000, "tests": None, "ai_chat": None, "mock": None, "create": 30},
 }
 MOCK_MINUTES = (60, 90, 120, 180)
+GROUP_MOCK_PRICE = 50_000        # ustoz guruh uchun bitta Mock yaratishi narxi
+GROUP_MOCK_MAX_Q = 100           # guruh Mock'idagi savollar chegarasi
+GROUP_MOCK_COUNTS = (10, 20, 30, 40)
 MOCK_BLOCK_COUNTS = (10, 20, 30)
 MOCK_POINTS = (1.1, 2.1, 3.1)
 MISTAKES_PER_ROUND = 20

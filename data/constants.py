@@ -18,9 +18,11 @@ BTN_TUTOR = "🤖 AI ustozga savol"
 BTN_RESULTS = "📈 Natijalarim"
 BTN_RATING = "🏆 Reyting"
 BTN_PREMIUM = "⭐️ Premium"
+BTN_CREATE = "✍️ Test yaratish"
 ABITURIYENT_SOON: tuple = ()
 
-SUBJECTS = {"math": "Matematika", "english": "Ingliz tili"}
+SUBJECTS = {"math": "Matematika", "english": "Ingliz tili", "uzlit": "Ona tili va adabiyot", "physics": "Fizika",
+            "law": "Huquq", "python": "Python"}
 
 # Student
 BTN_TEST = "✅ Test tayyorlash"

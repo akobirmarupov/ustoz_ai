@@ -13,7 +13,7 @@ def main_menu() -> ReplyKeyboardMarkup:
 
 
 def abituriyent_menu() -> ReplyKeyboardMarkup:
-    return _kb([[BTN_SOLVE], [BTN_TUTOR, BTN_RESULTS], [BTN_MOCK, BTN_MISTAKES],
+    return _kb([[BTN_SOLVE, BTN_CREATE], [BTN_TUTOR, BTN_RESULTS], [BTN_MOCK, BTN_MISTAKES],
                 [BTN_RATING, BTN_PREMIUM], [BTN_BACK]])
 
 
