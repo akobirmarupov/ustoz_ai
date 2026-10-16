@@ -51,8 +51,6 @@ def admin_payment_kb(payment_id: int) -> InlineKeyboardMarkup:
 
 def test_source_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [B(text="🤖 AI: javobsiz testlarga javob topish", callback_data="tsrc:tests")],
-        [B(text="🤖 AI: kitobchadan test tuzish", callback_data="tsrc:book")],
         [B(text="📄 Avtomatik: javoblari bor tayyor test", callback_data="tsrc:auto")],
         [B(text="✍️ Qo'lda yozish", callback_data="tsrc:manual")],
     ])

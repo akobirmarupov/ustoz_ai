@@ -32,7 +32,7 @@ async def student_home(message: Message, state: FSMContext, db_user):
         "👨‍🎓 <b>Student bo'limi</b>\n\n"
         f"📊 Slayd, 📄 Referat, 📝 Mustaqil ish — {money(config.PRICES['slide'])}\n"
         f"📰 Maqola, 📚 Kurs ishi — {money(config.PRICES['maqola'])}\n"
-        f"✅ Test tayyorlash — {money(config.PRICES['test_auto'])} / AI orqali {money(config.PRICES['test'])}\n\n"
+        f"✅ Test tayyorlash — {money(config.PRICES['test_auto'])}\n\n"
         f"🎁 Sizda <b>{left}</b> ta bepul slayd/referat/mustaqil ish bor.",
         reply_markup=student_menu())
 

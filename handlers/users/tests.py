@@ -41,15 +41,12 @@ async def test_start(message: Message, state: FSMContext, db_user):
         gift = "\n\n👑 Admin uchun bepul."
     await message.answer(
         "✅ <b>Test tayyorlash</b>\n\n"
-        "🤖 <b>AI: javobsiz testlar</b> — fayldagi testlarga AI javob topadi.\n"
-        "🤖 <b>AI: kitobcha</b> — kitob matnidan AI siz tanlagan sondagi testlarni tuzadi.\n"
         "📄 <b>Avtomatik</b> — javoblari belgilangan tayyor testni quiz ko'rinishiga keltiradi.\n"
         "✍️ <b>Qo'lda</b> — savollarni o'zingiz yozasiz.\n\n"
         "📝 Testga nom berasiz va har bir testdagi savollar sonini tanlaysiz (20/30/40/50). Fayl shu sondan "
         "bo'linadi: masalan «Matematika» → Matematika 1, Matematika 2 ...\n"
         "👥 Tayyor testlarni o'zingiz ishlashingiz yoki Telegram guruhda o'tkazishingiz mumkin.\n\n"
-        f"💰 AI orqali: <b>{money(config.PRICES['test'])}</b>\n"
-        f"💰 Avtomatik va Qo'lda: <b>{money(config.PRICES['test_auto'])}</b>\n"
+        f"💰 Narxi: <b>{money(config.PRICES['test_auto'])}</b>\n"
         "To'lov test tayyorlashdan oldin qilinadi." + gift,
         reply_markup=test_source_kb())
 
@@ -64,7 +61,7 @@ async def abi_create(message: Message, state: FSMContext, db_user):
              f"ishlatilgan: <b>{await abi_created(db_user.id)}</b>" if limit else abi_limit_text(plan, 0))
     await message.answer(
         "✍️ <b>Test yaratish</b>\n\n"
-        "📝 <b>Oddiy test</b> — faylingizdan yoki qo'lda test tayyorlanadi (AI, avtomatik yoki qo'lda). "
+        "📝 <b>Oddiy test</b> — faylingizdan yoki qo'lda test tayyorlanadi (avtomatik yoki qo'lda). "
         "Tayyor testni o'zingiz ishlaysiz yoki guruhda o'tkazasiz. Obuna ichida, alohida to'lovsiz.\n"
         f"{quota}\n\n"
         f"🧪 <b>Mock</b> — guruh uchun ballli imtihon, oxirida reyting. Alohida to'lov: "
@@ -91,6 +88,9 @@ async def abi_test(call: CallbackQuery, state: FSMContext, db_user):
 @router.callback_query(F.data.startswith("tsrc:"))
 async def test_source(call: CallbackQuery, state: FSMContext):
     source = call.data.split(":")[1]
+    if source not in PRICE_KEY:  # AI orqali test tayyorlash olib tashlangan (eski tugmalar)
+        await call.answer("Bu usul endi mavjud emas", show_alert=True)
+        return
     await state.update_data(source=source)
     await call.answer()
     await state.set_state(TestOrder.name)
