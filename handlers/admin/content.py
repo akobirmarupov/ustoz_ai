@@ -227,7 +227,6 @@ async def test_del_ok(call: CallbackQuery):
 # ---------------- Test qo'shish: nom → usul → vaqt → hajm → fayl ----------------
 
 MODE_KB = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="🤖 AI orqali (javobsiz test yoki kitobcha)", callback_data="cm:ai")],
     [InlineKeyboardButton(text="📄 Avtomatik (javoblari bor tayyor test)", callback_data="cm:auto")],
     [InlineKeyboardButton(text="✍️ Qo'lda yozish", callback_data="cm:manual")],
 ])
@@ -260,6 +259,9 @@ async def test_name(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("cm:"))
 async def upload_mode(call: CallbackQuery, state: FSMContext):
+    if call.data not in ("cm:auto", "cm:manual"):  # AI orqali test tayyorlash olib tashlangan (eski tugmalar)
+        await call.answer("Bu usul endi mavjud emas", show_alert=True)
+        return
     if "name" not in await state.get_data():
         await call.answer("Avval test nomini kiriting: ➕ Test qo'shish", show_alert=True)
         return
