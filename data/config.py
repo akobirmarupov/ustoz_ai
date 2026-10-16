@@ -16,6 +16,10 @@ DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite+aiosqlite:///{BASE_DIR / 'u
 
 # Claude API (ANTHROPIC_API_KEY .env faylidan avtomatik olinadi)
 AI_MODEL = os.getenv("AI_MODEL") or "claude-opus-5-5"
+# Vaqtincha: Claude kaliti bo'lmasa Gemini ishlatiladi
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-flash-latest"
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL") or "gemini-3-flash-preview"
 
 # To'lov ma'lumotlari (hozircha admin orqali qo'lda tasdiqlanadi)
 CARD_NUMBER = os.getenv("CARD_NUMBER") or "0000 0000 0000 0000"

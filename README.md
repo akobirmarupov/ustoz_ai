@@ -31,7 +31,7 @@ Jadvallar bot birinchi ishga tushganda avtomatik yaratiladi.
 | `database/` | modellar va so'rovlar (SQLAlchemy async) |
 | `handlers/users/` | ro'yxatdan o'tish, Abituriyent, Student, testlar, to'lov |
 | `handlers/admin/` | `/admin`, `/tolovlar`, `/premium`, `/block` |
-| `services/ai.py` | Claude API: reja, slayd, hujjat, testga javob, kitobchadan test, AI ustoz |
+| `services/ai.py` | Claude API (kalit bo'lmasa vaqtincha Gemini): reja, slayd, hujjat, testga javob, kitobchadan test, AI ustoz |
 | `services/documents.py` | `.pptx` va `.docx` yasash |
 | `services/extract.py` | PDF/Word dan matn olish, testlarni 30 tadan bo'lish |
 | `services/worker.py` | fon navbati: og'ir ishlar ketma-ket bajariladi, bot qotmaydi |

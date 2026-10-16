@@ -1,7 +1,13 @@
-"""Claude API bilan ishlash: hujjatlar, slaydlar, testlar va AI ustoz."""
+"""AI bilan ishlash: hujjatlar, slaydlar, testlar va AI ustoz.
+
+ANTHROPIC_API_KEY bo'lsa Claude ishlatiladi, bo'lmasa (vaqtincha) GEMINI_API_KEY orqali Gemini.
+"""
+import asyncio
 import json
 import logging
+import os
 
+import aiohttp
 import anthropic
 
 from data import config
@@ -22,6 +28,8 @@ class AIError(Exception):
 
 
 async def _run(system: str, messages: list, *, max_tokens: int, effort: str, schema: dict | None = None):
+    if not os.getenv("ANTHROPIC_API_KEY") and config.GEMINI_API_KEY:
+        return await _run_gemini(system, messages, max_tokens=max_tokens, effort=effort, schema=schema)
     output_config = {"effort": effort}
     if schema:
         output_config["format"] = {"type": "json_schema", "schema": schema}
@@ -55,6 +63,58 @@ async def _run(system: str, messages: list, *, max_tokens: int, effort: str, sch
     if msg.stop_reason == "max_tokens":
         raise AIError("Javob juda uzun chiqdi")
     text = "".join(b.text for b in msg.content if b.type == "text")
+    if schema:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            raise AIError("AI javobini o'qib bo'lmadi") from e
+    return text.strip()
+
+
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
+GEMINI_THINKING = {"low": "low", "medium": "medium", "high": "high"}
+
+
+async def _run_gemini(system: str, messages: list, *, max_tokens: int, effort: str, schema: dict | None):
+    body = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]}
+                     for m in messages],
+        "generationConfig": {"maxOutputTokens": max_tokens,
+                             "thinkingConfig": {"thinkingLevel": GEMINI_THINKING.get(effort, "low")}},
+    }
+    if schema:
+        body["generationConfig"] |= {"responseMimeType": "application/json", "responseJsonSchema": schema}
+    headers = {"x-goog-api-key": config.GEMINI_API_KEY}
+    # Model band bo'lsa (503/429) bir oz kutib, zaxira model bilan qayta uriniladi
+    models = [config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODEL] * 2
+    timeout = aiohttp.ClientTimeout(total=600)
+    data = None
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for i, model in enumerate(models):
+                async with session.post(GEMINI_URL.format(model), json=body, headers=headers) as resp:
+                    data = await resp.json(content_type=None)
+                    status = resp.status
+                if status == 200:
+                    break
+                log.error("Gemini xatosi %s (%s): %s", status, model, (data.get("error") or {}).get("message"))
+                if status in (400, 401, 403):
+                    raise AIError("AI kaliti noto'g'ri. Admin bilan bog'laning")
+                if status not in (429, 500, 503) or i == len(models) - 1:
+                    raise AIError(f"AI xatosi ({status})" if status not in (429, 503)
+                                  else "AI hozir band, birozdan keyin qayta urinib ko'ring")
+                await asyncio.sleep(2 * (i + 1))
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        raise AIError("AI serveriga ulanib bo'lmadi") from e
+
+    cand = (data.get("candidates") or [{}])[0]
+    reason = cand.get("finishReason")
+    if reason == "MAX_TOKENS":
+        raise AIError("Javob juda uzun chiqdi")
+    text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []) if not p.get("thought"))
+    if not text:
+        raise AIError("AI bu so'rovni bajarmadi")
     if schema:
         try:
             return json.loads(text)
