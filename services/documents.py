@@ -17,15 +17,15 @@ from pptx.util import Inches
 from pptx.util import Pt as PPt
 
 LABELS = {
-    "uz": {"intro": "KIRISH", "conclusion": "XULOSA", "refs": "FOYDALANILGAN ADABIYOTLAR", "toc": "MUNDARIJA",
+    "uz": {"intro": "KIRISH", "conclusion": "XULOSA", "refs": "FOYDALANILGAN ADABIYOTLAR", "toc": "MUNDARIJA", "plan": "REJA",
            "topic": "Mavzu", "by": "Bajardi", "checked": "Tekshirdi", "annotation": "Annotatsiya",
            "keywords": "Kalit so'zlar", "thanks": "E'tiboringiz uchun rahmat!",
            "referat": "REFERAT", "mustaqil": "MUSTAQIL ISH", "kurs": "KURS ISHI", "esse": "ESSE"},
-    "ru": {"intro": "ВВЕДЕНИЕ", "conclusion": "ЗАКЛЮЧЕНИЕ", "refs": "СПИСОК ЛИТЕРАТУРЫ", "toc": "СОДЕРЖАНИЕ",
+    "ru": {"intro": "ВВЕДЕНИЕ", "conclusion": "ЗАКЛЮЧЕНИЕ", "refs": "СПИСОК ЛИТЕРАТУРЫ", "toc": "СОДЕРЖАНИЕ", "plan": "ПЛАН",
            "topic": "Тема", "by": "Выполнил(а)", "checked": "Проверил(а)", "annotation": "Аннотация",
            "keywords": "Ключевые слова", "thanks": "Спасибо за внимание!",
            "referat": "РЕФЕРАТ", "mustaqil": "САМОСТОЯТЕЛЬНАЯ РАБОТА", "kurs": "КУРСОВАЯ РАБОТА", "esse": "ЭССЕ"},
-    "en": {"intro": "INTRODUCTION", "conclusion": "CONCLUSION", "refs": "REFERENCES", "toc": "CONTENTS",
+    "en": {"intro": "INTRODUCTION", "conclusion": "CONCLUSION", "refs": "REFERENCES", "toc": "CONTENTS", "plan": "PLAN",
            "topic": "Topic", "by": "Prepared by", "checked": "Checked by", "annotation": "Abstract",
            "keywords": "Keywords", "thanks": "Thank you for your attention!",
            "referat": "ESSAY", "mustaqil": "INDEPENDENT WORK", "kurs": "COURSE PAPER", "esse": "ESSAY"},
@@ -402,14 +402,22 @@ def build_docx(kind: str, data: dict, titul: list[str], lang: str, path: Path) -
             p.add_run(", ".join(data["keywords"]))
     else:
         _title_page(doc, kind, data, titul, L)
-        _heading(doc, L["toc"])
-        toc = [L["intro"]]
-        for sec in data["sections"]:
-            toc.append(sec["heading"])
-            toc += [f"    {sub['heading']}" for sub in sec.get("subsections", [])]
-        toc += [L["conclusion"], L["refs"]]
-        for line in toc:
-            _p(doc, line, indent=False)
+        if kind == "kurs":  # mundarija faqat kurs ishida
+            _heading(doc, L["toc"])
+            toc = [L["intro"]]
+            for sec in data["sections"]:
+                toc.append(sec["heading"])
+                toc += [f"    {sub['heading']}" for sub in sec.get("subsections", [])]
+            toc += [L["conclusion"], L["refs"]]
+            for line in toc:
+                _p(doc, line, indent=False)
+        else:  # referat, mustaqil ish — reja
+            _heading(doc, f"{L['plan']}:")
+            _p(doc, L["intro"].capitalize(), indent=False)
+            for i, sec in enumerate(data["sections"], 1):
+                _p(doc, f"{i}. {sec['heading']}", indent=False)
+            _p(doc, L["conclusion"].capitalize(), indent=False)
+            _p(doc, L["refs"].capitalize(), indent=False)
         _page_break(doc)
 
     if data.get("introduction"):
