@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from docx import Document
+from docx.enum.section import WD_SECTION
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -387,12 +388,7 @@ def build_docx(kind: str, data: dict, titul: list[str], lang: str, path: Path) -
     doc = Document()
     _setup(doc)
 
-    if kind == "esse":
-        _p(doc, L["esse"], bold=True, size=16, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=6)
-        _p(doc, data["title"], bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=6)
-        if titul:
-            _p(doc, ", ".join(titul), italic=True, align=WD_ALIGN_PARAGRAPH.RIGHT, indent=False, after=12)
-    elif kind == "maqola":
+    if kind == "maqola":
         _p(doc, data["title"].upper(), bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=6)
         if titul:
             _p(doc, ", ".join(titul), italic=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=12)
@@ -432,6 +428,139 @@ def build_docx(kind: str, data: dict, titul: list[str], lang: str, path: Path) -
         _heading(doc, L["refs"])
         for i, ref in enumerate(data["references"], 1):
             _p(doc, f"{i}. {ref}", indent=False)
+
+    doc.save(path)
+    return path
+
+
+# ---------------- Esse (talabalar shabloni) ----------------
+
+ESSE_LABELS = {
+    "uz": {"country": "O'ZBEKISTON RESPUBLIKASI", "ministry": "OLIY TA'LIM, FAN VA INNOVATSIYALAR VAZIRLIGI",
+           "univ_blank": "_______________________________ UNIVERSITETI",
+           "faculty": "_______________________ fakulteti", "dept": "_______________________ kafedrasi",
+           "subject": "Fan", "topic": "Mavzu", "by": "Bajardi", "group": "_____ guruh talabasi",
+           "checked": "Tekshirdi", "intro": "Kirish", "body": "Asosiy qism", "conclusion": "Xulosa",
+           "refs": "Foydalanilgan adabiyotlar", "city": "Toshkent"},
+    "ru": {"country": "РЕСПУБЛИКА УЗБЕКИСТАН", "ministry": "МИНИСТЕРСТВО ВЫСШЕГО ОБРАЗОВАНИЯ, НАУКИ И ИННОВАЦИЙ",
+           "univ_blank": "УНИВЕРСИТЕТ _______________________________",
+           "faculty": "Факультет _______________________", "dept": "Кафедра _______________________",
+           "subject": "Предмет", "topic": "Тема", "by": "Выполнил(а)", "group": "студент(ка) группы _____",
+           "checked": "Проверил(а)", "intro": "Введение", "body": "Основная часть", "conclusion": "Заключение",
+           "refs": "Список литературы", "city": "Ташкент"},
+    "en": {"country": "REPUBLIC OF UZBEKISTAN", "ministry": "MINISTRY OF HIGHER EDUCATION, SCIENCE AND INNOVATION",
+           "univ_blank": "_______________________________ UNIVERSITY",
+           "faculty": "Faculty of _______________________", "dept": "Department of _______________________",
+           "subject": "Subject", "topic": "Topic", "by": "Prepared by", "group": "student of group _____",
+           "checked": "Checked by", "intro": "Introduction", "body": "Main part", "conclusion": "Conclusion",
+           "refs": "References", "city": "Tashkent"},
+}
+_BLANK = "_________________________"
+
+
+def _ep(doc, *runs, align=WD_ALIGN_PARAGRAPH.CENTER, left=None, body=False, before=0, after=0):
+    """Esse paragrafi: runs = (matn, bold, italic) yoki shunchaki matn."""
+    p = doc.add_paragraph()
+    p.alignment = align
+    pf = p.paragraph_format
+    pf.space_before, pf.space_after = Pt(before), Pt(after)
+    if left is not None:
+        pf.left_indent = Cm(left)
+    if body:
+        pf.line_spacing = 1.5
+        pf.first_line_indent = Cm(1.25)
+    for r in runs:
+        text, bold, italic = (r, False, False) if isinstance(r, str) else r
+        if text:
+            run = p.add_run(text)
+            run.bold, run.italic = bold, italic
+    return p
+
+
+def _blanks(doc, n):
+    for _ in range(n):
+        doc.add_paragraph()
+
+
+def build_essay(data: dict, titul: list[str], lang: str, path: Path) -> Path:
+    L = ESSE_LABELS.get(lang, ESSE_LABELS["uz"])
+    univ = titul[0] if titul else ""
+    student = titul[1] if len(titul) > 1 else ""
+    teacher = titul[2] if len(titul) > 2 else ""
+    C, R, J = WD_ALIGN_PARAGRAPH.CENTER, WD_ALIGN_PARAGRAPH.RIGHT, WD_ALIGN_PARAGRAPH.JUSTIFY
+
+    doc = Document()
+    sec = doc.sections[0]
+    sec.page_height, sec.page_width = Cm(29.7), Cm(21)
+    sec.left_margin, sec.right_margin = Cm(3), Cm(1.5)
+    sec.top_margin, sec.bottom_margin = Cm(2), Cm(2)
+    st = doc.styles["Normal"]
+    st.font.name = "Times New Roman"
+    st.font.size = Pt(14)
+    st.element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
+    st.paragraph_format.line_spacing = 1.0
+    st.paragraph_format.space_before = st.paragraph_format.space_after = Pt(0)
+
+    # ---- titul varag'i (sahifa raqamisiz) ----
+    _ep(doc, (L["country"], True, False))
+    _ep(doc, (L["ministry"], True, False))
+    _blanks(doc, 1)
+    _ep(doc, (univ.upper() if univ else L["univ_blank"], True, False))
+    _blanks(doc, 1)
+    _ep(doc, L["faculty"])
+    _ep(doc, L["dept"])
+    _blanks(doc, 4)
+    _ep(doc, (LABELS[lang]["esse"], True, False)).runs[0].font.size = Pt(24)
+    _blanks(doc, 1)
+    if data.get("subject"):
+        _ep(doc, f"{L['subject']}: {data['subject']}")
+        _blanks(doc, 1)
+    _ep(doc, (f"{L['topic']}: ", True, False), (f"“{data['title']}”", True, True))
+    _blanks(doc, 5)
+    _ep(doc, (f"{L['by']}: ", True, False), L["group"], align=None, left=8.5)
+    _ep(doc, student or _BLANK, align=None, left=8.5)
+    _blanks(doc, 1)
+    _ep(doc, (f"{L['checked']}: ", True, False), teacher or "_________________", align=None, left=8.5)
+    _ep(doc, _BLANK, align=None, left=8.5)
+    _blanks(doc, 4 if data.get("subject") else 6)
+    city = (data.get("city") or "").strip() or L["city"]
+    _ep(doc, (f"{city} – {datetime.now().year}", True, False))
+
+    # ---- matn (yangi sahifa, raqamlash 2 dan) ----
+    body = doc.add_section(WD_SECTION.NEW_PAGE)
+    body.footer.is_linked_to_previous = False
+    _page_numbers(body)
+    num = OxmlElement("w:pgNumType")
+    num.set(qn("w:start"), "2")
+    body._sectPr.find(qn("w:pgMar")).addnext(num)  # sxema tartibi: pgMar'dan keyin
+
+    def head(text):
+        p = _ep(doc, (text, True, False), before=6, after=6)
+        p.paragraph_format.line_spacing = 1.5
+
+    def paras(items):
+        for t in items:
+            if t.strip():
+                _ep(doc, t.strip(), align=J, body=True)
+
+    head(data["title"].upper())
+    if data.get("epigraph") and data.get("epigraph_author"):
+        quote = data["epigraph"].strip(' “”"«»')
+        _ep(doc, (f"“{quote}”", False, True), align=R)
+        _ep(doc, (data["epigraph_author"], False, True), align=R, after=6)
+    head(L["intro"])
+    paras(data.get("introduction", []))
+    head(L["body"])
+    paras(data.get("body", []))
+    head(L["conclusion"])
+    paras(data.get("conclusion", []))
+    if data.get("references"):
+        head(L["refs"])
+        for i, ref in enumerate(data["references"], 1):
+            p = _ep(doc, f"{i}. {ref}", align=J)
+            pf = p.paragraph_format
+            pf.line_spacing = 1.5
+            pf.left_indent, pf.first_line_indent = Cm(0.75), Cm(-0.75)
 
     doc.save(path)
     return path

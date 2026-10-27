@@ -81,7 +81,11 @@ async def doc_size(call: CallbackQuery, state: FSMContext):
 
 async def _ask_titul(message: Message, state: FSMContext, kind: str):
     await state.set_state(DocOrder.titul)
-    if kind in ("maqola", "esse"):
+    if kind == "esse":
+        text = ("🏷 Titul varag'i uchun har birini <b>yangi qatorda</b> yozing:\n"
+                "1-qator: Universitet nomi\n2-qator: Ismingiz (bajardi)\n3-qator: O'qituvchi (tekshirdi)\n\n"
+                "Faqat universitet nomini yozsangiz ham bo'ladi.")
+    elif kind == "maqola":
         text = "✍️ Muallif ma'lumotlarini yozing (F.I.Sh., OTM, lavozim) — bitta qatorda:"
     else:
         text = ("🏷 Titul varag'i uchun har birini <b>yangi qatorda</b> yozing:\n"

@@ -132,6 +132,11 @@ STR_LIST = {"type": "array", "items": STR}
 OUTLINE_SCHEMA = _obj({"title": STR, "sections": STR_LIST})
 SLIDES_SCHEMA = _obj({"title": STR, "slides": {"type": "array", "items": _obj({"title": STR, "bullets": STR_LIST})}})
 _SUB = _obj({"heading": STR, "paragraphs": STR_LIST})
+ESSE_SCHEMA = _obj({
+    "title": STR, "subject": STR, "city": STR,
+    "epigraph": STR, "epigraph_author": STR,
+    "introduction": STR_LIST, "body": STR_LIST, "conclusion": STR_LIST, "references": STR_LIST,
+})
 DOC_SCHEMA = _obj({
     "title": STR,
     "annotation": STR,
@@ -198,6 +203,26 @@ async def make_document(kind: str, topic: str, lang: str, pages: int, outline: d
                  else "references: 6-12 real sources."))
     return await _run(WRITER_SYSTEM, [{"role": "user", "content": prompt}],
                       max_tokens=64000, effort="medium", schema=DOC_SCHEMA)
+
+
+async def make_essay(topic: str, lang: str, pages: int, outline: dict, university: str = "") -> dict:
+    words = pages * WORDS_PER_PAGE
+    prompt = (f"Write a student essay (esse) on «{topic}» in {LANG_NAMES[lang]}.\n"
+              f"Title: {outline['title']}\nCover these points in the main part, in order:\n- "
+              + "\n- ".join(outline["sections"]) +
+              f"\nTotal length: about {words} words (≈{pages} pages, Times New Roman 14, 1.5 spacing).\n"
+              "introduction: 1 paragraph that ends with what the author will argue in this essay. "
+              "body: 3-6 full paragraphs (4-7 sentences) developing the argument with facts and examples; "
+              "include the author's own opinion in first person (e.g. «Mening fikrimcha...»). "
+              "conclusion: 1 paragraph. "
+              "subject: the university subject (fan) this topic belongs to, short, e.g. «O'zbekiston tarixi». "
+              "epigraph / epigraph_author: a short real, well-known quote that fits the topic and its author "
+              "(leave both empty if you are not sure the quote is real). "
+              f"city: the city where this university is located: «{university or 'unknown'}» "
+              "(if unknown, use Tashkent), written in the essay language. "
+              "references: 3-6 real, well-known sources.")
+    return await _run(WRITER_SYSTEM, [{"role": "user", "content": prompt}],
+                      max_tokens=16000, effort="medium", schema=ESSE_SCHEMA)
 
 
 TEST_SYSTEM = ("You are a meticulous subject-matter expert who prepares and checks multiple-choice tests. "

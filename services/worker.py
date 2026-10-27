@@ -17,7 +17,7 @@ from database.models import BankChunk, BankUpload, Grade, Job, Order, Question, 
 from database.requests import enqueue
 from keyboards.inline.buttons import set_menu_kb
 from services import ai
-from services.documents import build_docx, build_pptx
+from services.documents import build_docx, build_essay, build_pptx
 from services.extract import chunks, extract_text, split_book, split_numbered_questions, text_windows
 from services.parser import parse_tests
 from services.payments import start_payment
@@ -61,6 +61,10 @@ async def process_doc(bot: Bot, order_id: int):
         data = await ai.make_slides(p["topic"], p["lang"], p["size"], p["outline"])
         path = config.RESULTS_DIR / f"{order.id}.pptx"
         await asyncio.to_thread(build_pptx, data, titul, p["lang"], path, order.id)
+    elif order.kind == "esse":
+        data = await ai.make_essay(p["topic"], p["lang"], p["size"], p["outline"], titul[0] if titul else "")
+        path = config.RESULTS_DIR / f"{order.id}.docx"
+        await asyncio.to_thread(build_essay, data, titul, p["lang"], path)
     else:
         data = await ai.make_document(order.kind, p["topic"], p["lang"], p["size"], p["outline"])
         path = config.RESULTS_DIR / f"{order.id}.docx"
