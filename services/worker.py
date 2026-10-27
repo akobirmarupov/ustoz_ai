@@ -60,7 +60,7 @@ async def process_doc(bot: Bot, order_id: int):
     if order.kind == "slide":
         data = await ai.make_slides(p["topic"], p["lang"], p["size"], p["outline"])
         path = config.RESULTS_DIR / f"{order.id}.pptx"
-        await asyncio.to_thread(build_pptx, data, titul, p["lang"], path)
+        await asyncio.to_thread(build_pptx, data, titul, p["lang"], path, order.id)
     else:
         data = await ai.make_document(order.kind, p["topic"], p["lang"], p["size"], p["outline"])
         path = config.RESULTS_DIR / f"{order.id}.docx"

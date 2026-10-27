@@ -1,4 +1,5 @@
 """Tayyor .pptx va .docx fayllarni yasash."""
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -13,13 +14,6 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches
 from pptx.util import Pt as PPt
-
-NAVY = RGBColor(0x0F, 0x1F, 0x4B)
-CYAN = RGBColor(0x00, 0xC2, 0xFF)
-GOLD = RGBColor(0xF2, 0xB6, 0x32)
-INK = RGBColor(0x26, 0x2F, 0x40)
-MUTED = RGBColor(0x8A, 0x93, 0xA6)
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
 LABELS = {
     "uz": {"intro": "KIRISH", "conclusion": "XULOSA", "refs": "FOYDALANILGAN ADABIYOTLAR", "toc": "MUNDARIJA",
@@ -38,16 +32,95 @@ LABELS = {
 
 
 # ---------------- PowerPoint ----------------
+#
+# Har bir taqdimot uchun tasodifiy uslub tanlanadi: rang palitrasi + muqova maketi +
+# slayd maketi + shriftlar + marker. Shu sababli bir xil mavzudagi slaydlar ham
+# har xil ko'rinishda chiqadi.
 
-def _rect(slide, x, y, w, h, color):
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+def _rgb(hex_: str) -> RGBColor:
+    return RGBColor.from_string(hex_.lstrip("#"))
+
+
+# primary — asosiy to'q rang, accent/accent2 — urg'u ranglari, bg — slayd foni,
+# card — kartochka foni, ink — matn, heading — sarlavha, light — to'q fondagi matn.
+PALETTES = [
+    dict(primary="0F1F4B", accent="00C2FF", accent2="F2B632", bg="FFFFFF", card="F1F5FB",
+         ink="262F40", heading="0F1F4B", muted="8A93A6", light="FFFFFF", soft="C9D6F0"),
+    dict(primary="1B4332", accent="52B788", accent2="F4A261", bg="F8F9F4", card="E9F2EC",
+         ink="23302A", heading="1B4332", muted="7F8C84", light="FFFFFF", soft="CFE6D8"),
+    dict(primary="5C1A2B", accent="E07A5F", accent2="F2CC8F", bg="FFF8F0", card="F8EBE0",
+         ink="3A2A2E", heading="5C1A2B", muted="9C8A8E", light="FFFFFF", soft="EED3D9"),
+    dict(primary="1E1B2E", accent="A78BFA", accent2="F472B6", bg="1E1B2E", card="2C2842",
+         ink="E5E7EB", heading="FFFFFF", muted="9B97B5", light="FFFFFF", soft="CFC8F5"),
+    dict(primary="0F4C5C", accent="FB8B24", accent2="E36414", bg="FFFFFF", card="EEF5F6",
+         ink="22333A", heading="0F4C5C", muted="83979C", light="FFFFFF", soft="BFDCE3"),
+    dict(primary="222831", accent="FFD369", accent2="00ADB5", bg="EEEEEE", card="FFFFFF",
+         ink="2B313A", heading="222831", muted="8C9199", light="FFFFFF", soft="D7DBE0"),
+    dict(primary="1D3557", accent="E63946", accent2="A8DADC", bg="F1FAEE", card="FFFFFF",
+         ink="1D3557", heading="1D3557", muted="7C8BA1", light="FFFFFF", soft="C8DDEE"),
+    dict(primary="2B2D42", accent="EF8354", accent2="BFC0C0", bg="2B2D42", card="383B54",
+         ink="EDEEF2", heading="FFFFFF", muted="A3A6B8", light="FFFFFF", soft="D9DAE3"),
+    dict(primary="3D2C8D", accent="FF9F1C", accent2="2EC4B6", bg="FFFFFF", card="F3F1FB",
+         ink="2D2640", heading="3D2C8D", muted="8E88A3", light="FFFFFF", soft="D6D0F2"),
+    dict(primary="003049", accent="F77F00", accent2="FCBF49", bg="FDF6EC", card="FFFFFF",
+         ink="1F2E38", heading="003049", muted="83919A", light="FFFFFF", soft="BCD3E0"),
+    dict(primary="0B3D2E", accent="D4A373", accent2="FAEDCD", bg="0B3D2E", card="14523F",
+         ink="EEF3EF", heading="FAEDCD", muted="9DB8AD", light="FFFFFF", soft="D6E6DE"),
+    dict(primary="B23A48", accent="2F3E46", accent2="F6BD60", bg="FFFFFF", card="FBEFF0",
+         ink="2F3E46", heading="B23A48", muted="8D979C", light="FFFFFF", soft="F4D3D7"),
+]
+
+# (sarlavha shrifti, matn shrifti) — Office/WPS'da odatda mavjud shriftlar
+FONTS = [
+    ("Calibri", "Calibri"), ("Georgia", "Calibri"), ("Arial", "Arial"),
+    ("Trebuchet MS", "Trebuchet MS"), ("Cambria", "Calibri"), ("Verdana", "Verdana"),
+    ("Century Gothic", "Century Gothic"), ("Segoe UI", "Segoe UI"),
+]
+MARKERS = ["■", "●", "▸", "◆", "—", "✓", "num"]
+COVERS = ["full", "split", "band", "corner"]
+LAYOUTS = ["topbar", "sidebar", "header", "split", "card"]
+
+W, H = 13.333, 7.5
+
+
+class _Theme:
+    def __init__(self, rnd):
+        pal = rnd.choice(PALETTES)
+        for k, v in pal.items():
+            setattr(self, k, _rgb(v))
+        if pal["bg"] == pal["primary"]:
+            # qorong'i fon: panellar fonga qo'shilib ketmasligi uchun ochroq rang
+            self.primary = self.card
+        self.head_font, self.body_font = rnd.choice(FONTS)
+        self.marker = rnd.choice(MARKERS)
+        self.cover = rnd.choice(COVERS)
+        self.layout = rnd.choice(LAYOUTS)
+
+
+def _bg(slide, color):
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = color
+
+
+def _shape(slide, kind, x, y, w, h, color):
+    shape = slide.shapes.add_shape(kind, Inches(x), Inches(y), Inches(w), Inches(h))
     shape.fill.solid()
     shape.fill.fore_color.rgb = color
     shape.line.fill.background()
+    shape.shadow.inherit = False
     return shape
 
 
-def _text(slide, x, y, w, h, text, size, color, bold=False, anchor=MSO_ANCHOR.TOP, align=PP_ALIGN.LEFT):
+def _rect(slide, x, y, w, h, color):
+    return _shape(slide, MSO_SHAPE.RECTANGLE, x, y, w, h, color)
+
+
+def _circle(slide, x, y, d, color):
+    return _shape(slide, MSO_SHAPE.OVAL, x, y, d, d, color)
+
+
+def _text(slide, x, y, w, h, text, size, color, bold=False, anchor=MSO_ANCHOR.TOP,
+          align=PP_ALIGN.LEFT, font=None):
     box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = box.text_frame
     tf.word_wrap = True
@@ -60,54 +133,166 @@ def _text(slide, x, y, w, h, text, size, color, bold=False, anchor=MSO_ANCHOR.TO
         run.font.size = PPt(size)
         run.font.bold = bold
         run.font.color.rgb = color
+        if font:
+            run.font.name = font
     return box
 
 
-def build_pptx(data: dict, titul: list[str], lang: str, path: Path) -> Path:
+def _bullets(slide, t: _Theme, x, y, w, h, bullets, size):
+    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = box.text_frame
+    tf.word_wrap = True
+    for j, b in enumerate(bullets):
+        p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
+        p.space_after = PPt(10)
+        mark = p.add_run()
+        if t.marker == "num":
+            mark.text = f"{j + 1:02d}   "
+            mark.font.bold = True
+            mark.font.size = PPt(size - 2)
+        else:
+            mark.text = f"{t.marker}  "
+            mark.font.size = PPt(size - 6)
+        mark.font.color.rgb = t.accent
+        mark.font.name = t.head_font
+        run = p.add_run()
+        run.text = b
+        run.font.size = PPt(size)
+        run.font.color.rgb = t.ink
+        run.font.name = t.body_font
+
+
+def _title_size(title: str, base: int) -> int:
+    return base if len(title) <= 45 else base - 4 if len(title) <= 80 else base - 8
+
+
+# ---- muqova (birinchi slayd) ----
+
+def _cover(prs, t: _Theme, title: str, titul: list[str]):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    info = "\n".join(titul)
+    size = _title_size(title, 40)
+    if t.cover == "full":
+        _bg(s, t.primary)
+        _circle(s, 10.2, -1.6, 4.6, t.accent)
+        _circle(s, 11.9, 5.4, 2.6, t.accent2)
+        _rect(s, 0.8, 4.05, 1.6, 0.07, t.accent)
+        _rect(s, 2.5, 3.98, 0.2, 0.2, t.accent2)
+        _text(s, 0.8, 1.2, 9.2, 2.7, title, size, t.light, bold=True, anchor=MSO_ANCHOR.BOTTOM, font=t.head_font)
+        if info:
+            _text(s, 0.8, 4.4, 9.2, 2.4, info, 18, t.soft, font=t.body_font)
+    elif t.cover == "split":
+        _bg(s, t.bg)
+        _rect(s, 0, 0, 4.6, H, t.primary)
+        _circle(s, 1.3, 2.75, 2.0, t.accent)
+        _circle(s, 2.6, 4.2, 0.9, t.accent2)
+        _rect(s, 5.3, 4.05, 1.4, 0.07, t.accent)
+        _text(s, 5.3, 0.9, 7.4, 3.0, title, size - 2, t.heading, bold=True, anchor=MSO_ANCHOR.BOTTOM, font=t.head_font)
+        if info:
+            _text(s, 5.3, 4.4, 7.4, 2.6, info, 17, t.ink, font=t.body_font)
+    elif t.cover == "band":
+        _bg(s, t.bg)
+        _rect(s, 0, 1.3, W, 3.1, t.primary)
+        _rect(s, 0, 4.4, W, 0.1, t.accent)
+        _circle(s, 11.4, 0.5, 1.2, t.accent2)
+        _text(s, 0.8, 1.4, 11.7, 2.9, title, size, t.light, bold=True, anchor=MSO_ANCHOR.MIDDLE,
+              align=PP_ALIGN.CENTER, font=t.head_font)
+        if info:
+            _text(s, 0.8, 4.8, 11.7, 2.4, info, 17, t.ink, align=PP_ALIGN.CENTER, font=t.body_font)
+    else:  # corner
+        _bg(s, t.bg)
+        tri = _shape(s, MSO_SHAPE.RIGHT_TRIANGLE, 8.3, 2.5, 5.033, 5.0, t.primary)
+        tri._element.spPr.xfrm.set("flipH", "1")  # to'g'ri burchak o'ng pastda
+        _circle(s, -1.2, -1.2, 3.2, t.accent)
+        _circle(s, 1.6, 0.4, 0.6, t.accent2)
+        _rect(s, 0.8, 4.25, 2.2, 0.08, t.accent)
+        _text(s, 0.8, 1.4, 9.0, 2.7, title, size, t.heading, bold=True, anchor=MSO_ANCHOR.BOTTOM, font=t.head_font)
+        if info:
+            _text(s, 0.8, 4.6, 8.0, 2.4, info, 17, t.ink, font=t.body_font)
+
+
+# ---- asosiy slaydlar ----
+
+def _content(prs, t: _Theme, i: int, total: int, sl: dict):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    _bg(s, t.bg)
+    bullets = sl["bullets"][:7]
+    size = 20 if len(bullets) <= 5 else 18
+    title = sl["title"]
+    tsize = _title_size(title, 30)
+    num = f"{i}/{total}"
+
+    if t.layout == "topbar":
+        _rect(s, 0, 0, W, 0.14, t.primary)
+        _text(s, 0.8, 0.45, 11.7, 1.0, title, tsize, t.heading, bold=True, anchor=MSO_ANCHOR.BOTTOM, font=t.head_font)
+        _rect(s, 0.8, 1.55, 1.1, 0.06, t.accent)
+        _bullets(s, t, 0.8, 1.9, 11.7, 4.9, bullets, size)
+        _text(s, 11.6, 6.85, 1.2, 0.4, num, 12, t.muted, align=PP_ALIGN.RIGHT, font=t.body_font)
+        _rect(s, 12.95, 6.95, 0.12, 0.12, t.accent2)
+    elif t.layout == "sidebar":
+        _rect(s, 0, 0, 0.35, H, t.primary)
+        _rect(s, 0.35, 0, 0.08, H, t.accent)
+        _text(s, 11.0, 0.35, 1.9, 0.9, f"{i:02d}", 40, t.accent2, bold=True, align=PP_ALIGN.RIGHT, font=t.head_font)
+        _text(s, 1.0, 0.45, 10.0, 1.1, title, tsize, t.heading, bold=True, anchor=MSO_ANCHOR.BOTTOM, font=t.head_font)
+        _rect(s, 1.0, 1.65, 11.8, 0.03, t.muted)
+        _bullets(s, t, 1.0, 1.95, 11.6, 4.9, bullets, size)
+        _text(s, 11.6, 6.9, 1.2, 0.4, num, 12, t.muted, align=PP_ALIGN.RIGHT, font=t.body_font)
+    elif t.layout == "header":
+        _rect(s, 0, 0, W, 1.55, t.primary)
+        _rect(s, 0, 1.55, W, 0.08, t.accent)
+        _circle(s, 12.2, 0.45, 0.65, t.accent2)
+        _text(s, 0.8, 0.2, 11.1, 1.2, title, tsize - 2, t.light, bold=True, anchor=MSO_ANCHOR.MIDDLE, font=t.head_font)
+        _bullets(s, t, 0.8, 2.0, 11.7, 4.8, bullets, size)
+        _text(s, 0.8, 6.9, 3.0, 0.4, num, 12, t.muted, font=t.body_font)
+    elif t.layout == "split":
+        _rect(s, 0, 0, 4.4, H, t.primary)
+        _circle(s, 3.3, 5.9, 2.2, t.accent)
+        _text(s, 0.6, 0.6, 2.5, 0.8, f"{i:02d}", 36, t.accent2, bold=True, font=t.head_font)
+        _rect(s, 0.6, 1.5, 0.9, 0.06, t.accent)
+        _text(s, 0.6, 1.8, 3.4, 4.0, title, min(tsize, 26), t.light, bold=True, font=t.head_font)
+        _bullets(s, t, 5.0, 0.8, 7.7, 6.0, bullets, size - 1)
+        _text(s, 11.6, 6.9, 1.2, 0.4, num, 12, t.muted, align=PP_ALIGN.RIGHT, font=t.body_font)
+    else:  # card
+        _text(s, 0.8, 0.35, 11.7, 1.0, title, tsize, t.heading, bold=True, anchor=MSO_ANCHOR.BOTTOM, font=t.head_font)
+        _rect(s, 0.8, 1.45, 0.6, 0.06, t.accent)
+        _rect(s, 1.45, 1.45, 0.25, 0.06, t.accent2)
+        card = _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, 0.8, 1.8, 11.73, 5.0, t.card)
+        card.adjustments[0] = 0.05
+        _rect(s, 0.8, 2.1, 0.09, 4.4, t.accent)
+        _bullets(s, t, 1.2, 2.05, 11.1, 4.6, bullets, size)
+        _text(s, 11.6, 6.95, 1.2, 0.4, num, 12, t.muted, align=PP_ALIGN.RIGHT, font=t.body_font)
+
+
+# ---- yakuniy slayd ----
+
+def _closing(prs, t: _Theme, text: str):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    if t.cover in ("full", "band"):
+        _bg(s, t.primary)
+        _circle(s, -1.5, 4.6, 4.0, t.accent)
+        _circle(s, 11.6, 0.6, 1.4, t.accent2)
+        color = t.light
+    else:
+        _bg(s, t.bg)
+        _rect(s, 0, H - 0.5, W, 0.5, t.primary)
+        _circle(s, 10.8, -1.4, 3.6, t.accent)
+        _circle(s, 0.9, 5.2, 0.8, t.accent2)
+        color = t.heading
+    _text(s, 0.8, 2.6, 11.7, 1.6, text, 40, color, bold=True,
+          anchor=MSO_ANCHOR.MIDDLE, align=PP_ALIGN.CENTER, font=t.head_font)
+    _rect(s, 5.87, 4.3, 1.6, 0.07, t.accent)
+
+
+def build_pptx(data: dict, titul: list[str], lang: str, path: Path, seed=None) -> Path:
+    t = _Theme(random.Random(seed))
     prs = Presentation()
-    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
-    blank = prs.slide_layouts[6]
+    prs.slide_width, prs.slide_height = Inches(W), Inches(H)
 
-    s = prs.slides.add_slide(blank)
-    s.background.fill.solid()
-    s.background.fill.fore_color.rgb = NAVY
-    _rect(s, 0.8, 4.05, 1.6, 0.07, CYAN)
-    _rect(s, 2.5, 3.98, 0.2, 0.2, GOLD)
-    _text(s, 0.8, 1.2, 11.7, 2.7, data["title"], 40, WHITE, bold=True, anchor=MSO_ANCHOR.BOTTOM)
-    if titul:
-        _text(s, 0.8, 4.4, 11.7, 2.4, "\n".join(titul), 18, RGBColor(0xC9, 0xD6, 0xF0))
-
+    _cover(prs, t, data["title"], titul)
     total = len(data["slides"])
     for i, sl in enumerate(data["slides"], 1):
-        s = prs.slides.add_slide(blank)
-        _rect(s, 0, 0, 13.333, 0.14, NAVY)
-        _text(s, 0.8, 0.45, 11.7, 1.0, sl["title"], 30, NAVY, bold=True, anchor=MSO_ANCHOR.BOTTOM)
-        _rect(s, 0.8, 1.55, 1.1, 0.06, CYAN)
-        bullets = sl["bullets"][:7]
-        size = 20 if len(bullets) <= 5 else 18
-        box = s.shapes.add_textbox(Inches(0.8), Inches(1.9), Inches(11.7), Inches(4.9))
-        tf = box.text_frame
-        tf.word_wrap = True
-        for j, b in enumerate(bullets):
-            p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
-            p.space_after = PPt(10)
-            dot = p.add_run()
-            dot.text = "■  "
-            dot.font.size = PPt(size - 6)
-            dot.font.color.rgb = CYAN
-            run = p.add_run()
-            run.text = b
-            run.font.size = PPt(size)
-            run.font.color.rgb = INK
-        _text(s, 11.6, 6.85, 1.2, 0.4, f"{i}/{total}", 12, MUTED, align=PP_ALIGN.RIGHT)
-        _rect(s, 12.95, 6.95, 0.12, 0.12, GOLD)
-
-    s = prs.slides.add_slide(blank)
-    s.background.fill.solid()
-    s.background.fill.fore_color.rgb = NAVY
-    _text(s, 0.8, 2.6, 11.7, 1.6, LABELS[lang]["thanks"], 40, WHITE, bold=True,
-          anchor=MSO_ANCHOR.MIDDLE, align=PP_ALIGN.CENTER)
-    _rect(s, 5.87, 4.3, 1.6, 0.07, CYAN)
+        _content(prs, t, i, total, sl)
+    _closing(prs, t, LABELS[lang]["thanks"])
 
     prs.save(path)
     return path
