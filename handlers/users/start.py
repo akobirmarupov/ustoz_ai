@@ -87,7 +87,7 @@ async def reg_phone(message: Message, state: FSMContext):
     await message.answer(
         "✅ Ro'yxatdan o'tdingiz!\n\n"
         "🎓 <b>Abituriyent</b> — imtihonga tayyorgarlik va AI ustoz\n"
-        "👨‍🎓 <b>Student</b> — slayd, referat, mustaqil ish, maqola, kurs ishi va testlar\n\n"
+        "👨‍🎓 <b>Student</b> — slayd, referat, mustaqil ish, esse, maqola, kurs ishi va testlar\n\n"
         "🎁 Sovg'a: 2 ta bepul slayd/referat/mustaqil ish va 1 ta bepul test!",
         reply_markup=main_menu())
 

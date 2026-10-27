@@ -65,4 +65,4 @@ async def help_(message: Message):
         "4. Admin tasdiqlagach, ishingiz avtomatik tayyorlanadi.\n"
         "Yoki «💰 Hisobim» dagi pul bilan «💰 Hisobdan to'lash» — darhol, chekisiz.\n\n"
         "🎓 <b>Abituriyent:</b> 📝 Test ishlash, 🧪 Mock imtihon, ❌ Xatolar daftari, 🏆 Reyting, 🤖 AI ustoz.\n"
-        "👨‍🎓 <b>Student:</b> slayd, referat, mustaqil ish, maqola, kurs ishi va test tayyorlash." + support)
+        "👨‍🎓 <b>Student:</b> slayd, referat, mustaqil ish, esse, maqola, kurs ishi va test tayyorlash." + support)

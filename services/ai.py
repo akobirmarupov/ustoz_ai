@@ -150,6 +150,8 @@ KIND_GUIDE = {
     "slide": "a presentation (slides)",
     "referat": "a university referat (short research essay)",
     "mustaqil": "a university independent work (mustaqil ish)",
+    "esse": "a student essay (esse): a short, well-argued text with the author's own clear position, "
+            "an introduction, 2-3 body sections developing the argument with examples, and a conclusion",
     "maqola": "a scientific article in IMRAD style (annotation, keywords, introduction, methods, results, "
               "discussion, conclusion)",
     "kurs": "a university course paper (kurs ishi) with an introduction, two chapters (I BOB, II BOB) of "
@@ -192,7 +194,8 @@ async def make_document(kind: str, topic: str, lang: str, pages: int, outline: d
               "Put the introduction and conclusion in their own fields, not in sections. "
               "Use subsections only where they fit (always for a course paper). "
               "annotation and keywords: fill them only for a scientific article, otherwise leave them empty. "
-              "references: 6-12 real sources.")
+              + ("references: 0-3 real sources, only if they truly fit." if kind == "esse"
+                 else "references: 6-12 real sources."))
     return await _run(WRITER_SYSTEM, [{"role": "user", "content": prompt}],
                       max_tokens=64000, effort="medium", schema=DOC_SCHEMA)
 

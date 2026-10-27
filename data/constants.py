@@ -35,6 +35,8 @@ DOC_KINDS = {
                 "sizes": [("8-10 bet", 9), ("12-15 bet", 13)]},
     "mustaqil": {"button": "📝 Mustaqil ish", "title": "Mustaqil ish",
                  "sizes": [("5-7 bet", 6), ("8-10 bet", 9), ("12-15 bet", 13)]},
+    "esse": {"button": "✍️ Esse", "title": "Esse",
+             "sizes": [("2 bet", 2), ("3 bet", 3), ("4 bet", 4)]},
     "maqola": {"button": "📰 Maqola", "title": "Maqola",
                "sizes": [("5-7 bet", 6), ("8-10 bet", 9)]},
     "kurs": {"button": "📚 Kurs ishi", "title": "Kurs ishi",

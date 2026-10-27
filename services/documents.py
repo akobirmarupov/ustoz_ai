@@ -19,15 +19,15 @@ LABELS = {
     "uz": {"intro": "KIRISH", "conclusion": "XULOSA", "refs": "FOYDALANILGAN ADABIYOTLAR", "toc": "MUNDARIJA",
            "topic": "Mavzu", "by": "Bajardi", "checked": "Tekshirdi", "annotation": "Annotatsiya",
            "keywords": "Kalit so'zlar", "thanks": "E'tiboringiz uchun rahmat!",
-           "referat": "REFERAT", "mustaqil": "MUSTAQIL ISH", "kurs": "KURS ISHI"},
+           "referat": "REFERAT", "mustaqil": "MUSTAQIL ISH", "kurs": "KURS ISHI", "esse": "ESSE"},
     "ru": {"intro": "ВВЕДЕНИЕ", "conclusion": "ЗАКЛЮЧЕНИЕ", "refs": "СПИСОК ЛИТЕРАТУРЫ", "toc": "СОДЕРЖАНИЕ",
            "topic": "Тема", "by": "Выполнил(а)", "checked": "Проверил(а)", "annotation": "Аннотация",
            "keywords": "Ключевые слова", "thanks": "Спасибо за внимание!",
-           "referat": "РЕФЕРАТ", "mustaqil": "САМОСТОЯТЕЛЬНАЯ РАБОТА", "kurs": "КУРСОВАЯ РАБОТА"},
+           "referat": "РЕФЕРАТ", "mustaqil": "САМОСТОЯТЕЛЬНАЯ РАБОТА", "kurs": "КУРСОВАЯ РАБОТА", "esse": "ЭССЕ"},
     "en": {"intro": "INTRODUCTION", "conclusion": "CONCLUSION", "refs": "REFERENCES", "toc": "CONTENTS",
            "topic": "Topic", "by": "Prepared by", "checked": "Checked by", "annotation": "Abstract",
            "keywords": "Keywords", "thanks": "Thank you for your attention!",
-           "referat": "ESSAY", "mustaqil": "INDEPENDENT WORK", "kurs": "COURSE PAPER"},
+           "referat": "ESSAY", "mustaqil": "INDEPENDENT WORK", "kurs": "COURSE PAPER", "esse": "ESSAY"},
 }
 
 
@@ -387,7 +387,12 @@ def build_docx(kind: str, data: dict, titul: list[str], lang: str, path: Path) -
     doc = Document()
     _setup(doc)
 
-    if kind == "maqola":
+    if kind == "esse":
+        _p(doc, L["esse"], bold=True, size=16, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=6)
+        _p(doc, data["title"], bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=6)
+        if titul:
+            _p(doc, ", ".join(titul), italic=True, align=WD_ALIGN_PARAGRAPH.RIGHT, indent=False, after=12)
+    elif kind == "maqola":
         _p(doc, data["title"].upper(), bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=6)
         if titul:
             _p(doc, ", ".join(titul), italic=True, align=WD_ALIGN_PARAGRAPH.CENTER, indent=False, after=12)

@@ -1,4 +1,4 @@
-"""Student: slayd, referat, mustaqil ish, maqola, kurs ishi."""
+"""Student: slayd, referat, mustaqil ish, esse, maqola, kurs ishi."""
 from html import escape
 
 from aiogram import F, Router
@@ -31,6 +31,7 @@ async def student_home(message: Message, state: FSMContext, db_user):
     await message.answer(
         "👨‍🎓 <b>Student bo'limi</b>\n\n"
         f"📊 Slayd, 📄 Referat, 📝 Mustaqil ish — {money(config.PRICES['slide'])}\n"
+        f"✍️ Esse — {money(config.PRICES['esse'])}\n"
         f"📰 Maqola, 📚 Kurs ishi — {money(config.PRICES['maqola'])}\n"
         f"✅ Test tayyorlash — {money(config.PRICES['test_auto'])}\n\n"
         f"🎁 Sizda <b>{left}</b> ta bepul slayd/referat/mustaqil ish bor.",
@@ -80,7 +81,7 @@ async def doc_size(call: CallbackQuery, state: FSMContext):
 
 async def _ask_titul(message: Message, state: FSMContext, kind: str):
     await state.set_state(DocOrder.titul)
-    if kind == "maqola":
+    if kind in ("maqola", "esse"):
         text = "✍️ Muallif ma'lumotlarini yozing (F.I.Sh., OTM, lavozim) — bitta qatorda:"
     else:
         text = ("🏷 Titul varag'i uchun har birini <b>yangi qatorda</b> yozing:\n"

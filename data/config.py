@@ -39,6 +39,7 @@ PRICES = {
     "slide": 10_000,
     "referat": 10_000,
     "mustaqil": 10_000,
+    "esse": 15_000,         # faqat pullik (bepul urinishga kirmaydi)
     "maqola": 35_000,
     "kurs": 35_000,
     "test": 40_000,         # AI orqali test tayyorlash
