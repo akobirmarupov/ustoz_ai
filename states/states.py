@@ -8,6 +8,7 @@ class Register(StatesGroup):
 
 class DocOrder(StatesGroup):
     topic = State()
+    subject = State()  # faqat esse uchun
     lang = State()
     size = State()
     titul = State()

@@ -62,7 +62,9 @@ async def process_doc(bot: Bot, order_id: int):
         path = config.RESULTS_DIR / f"{order.id}.pptx"
         await asyncio.to_thread(build_pptx, data, titul, p["lang"], path, order.id)
     elif order.kind == "esse":
-        data = await ai.make_essay(p["topic"], p["lang"], p["size"], p["outline"], titul[0] if titul else "")
+        data = await ai.make_essay(p["topic"], p["lang"], p["size"], p["outline"], titul[0] if titul else "",
+                                   p.get("subject", ""))
+        data["subject"] = p.get("subject", "")  # fanni talaba kiritadi
         path = config.RESULTS_DIR / f"{order.id}.docx"
         await asyncio.to_thread(build_essay, data, titul, p["lang"], path)
     else:

@@ -54,6 +54,21 @@ async def doc_topic(message: Message, state: FSMContext):
         await message.answer("Mavzu juda qisqa. To'liqroq yozing:")
         return
     await state.update_data(topic=topic[:300])
+    if (await state.get_data())["kind"] == "esse":
+        await state.set_state(DocOrder.subject)
+        await message.answer("📘 Fan nomini yozing (masalan: O'zbekiston tarixi):")
+        return
+    await state.set_state(DocOrder.lang)
+    await message.answer("🌐 Qaysi tilda tayyorlansin?", reply_markup=langs_kb())
+
+
+@router.message(DocOrder.subject, F.text)
+async def doc_subject(message: Message, state: FSMContext):
+    subject = message.text.strip()
+    if len(subject) < 2:
+        await message.answer("Fan nomini to'liqroq yozing:")
+        return
+    await state.update_data(subject=subject[:150])
     await state.set_state(DocOrder.lang)
     await message.answer("🌐 Qaysi tilda tayyorlansin?", reply_markup=langs_kb())
 
@@ -149,6 +164,8 @@ async def outline_ok(call: CallbackQuery, state: FSMContext):
     await call.message.edit_reply_markup(reply_markup=None)
     kind = data["kind"]
     params = {k: data[k] for k in ("topic", "lang", "size", "titul", "outline")}
+    if data.get("subject"):
+        params["subject"] = data["subject"]
 
     async with Session() as s:
         user = await s.get(User, call.from_user.id)
@@ -187,6 +204,7 @@ async def my_works(message: Message, db_user):
 
 
 @router.message(DocOrder.topic)
+@router.message(DocOrder.subject)
 @router.message(DocOrder.titul)
 async def doc_expect_text(message: Message):
     await message.answer("Iltimos, matn ko'rinishida yozing.")

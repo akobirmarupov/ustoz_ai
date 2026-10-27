@@ -133,7 +133,7 @@ OUTLINE_SCHEMA = _obj({"title": STR, "sections": STR_LIST})
 SLIDES_SCHEMA = _obj({"title": STR, "slides": {"type": "array", "items": _obj({"title": STR, "bullets": STR_LIST})}})
 _SUB = _obj({"heading": STR, "paragraphs": STR_LIST})
 ESSE_SCHEMA = _obj({
-    "title": STR, "subject": STR, "city": STR,
+    "title": STR, "city": STR,
     "epigraph": STR, "epigraph_author": STR,
     "introduction": STR_LIST, "body": STR_LIST, "conclusion": STR_LIST, "references": STR_LIST,
 })
@@ -205,9 +205,11 @@ async def make_document(kind: str, topic: str, lang: str, pages: int, outline: d
                       max_tokens=64000, effort="medium", schema=DOC_SCHEMA)
 
 
-async def make_essay(topic: str, lang: str, pages: int, outline: dict, university: str = "") -> dict:
+async def make_essay(topic: str, lang: str, pages: int, outline: dict, university: str = "",
+                     subject: str = "") -> dict:
     words = pages * WORDS_PER_PAGE
-    prompt = (f"Write a student essay (esse) on «{topic}» in {LANG_NAMES[lang]}.\n"
+    prompt = (f"Write a student essay (esse) on «{topic}» in {LANG_NAMES[lang]}"
+              + (f" for the university subject «{subject}»" if subject else "") + ".\n"
               f"Title: {outline['title']}\nCover these points in the main part, in order:\n- "
               + "\n- ".join(outline["sections"]) +
               f"\nTotal length: about {words} words (≈{pages} pages, Times New Roman 14, 1.5 spacing).\n"
@@ -215,7 +217,6 @@ async def make_essay(topic: str, lang: str, pages: int, outline: dict, universit
               "body: 3-6 full paragraphs (4-7 sentences) developing the argument with facts and examples; "
               "include the author's own opinion in first person (e.g. «Mening fikrimcha...»). "
               "conclusion: 1 paragraph. "
-              "subject: the university subject (fan) this topic belongs to, short, e.g. «O'zbekiston tarixi». "
               "epigraph / epigraph_author: a short real, well-known quote that fits the topic and its author "
               "(leave both empty if you are not sure the quote is real). "
               f"city: the city where this university is located: «{university or 'unknown'}» "
