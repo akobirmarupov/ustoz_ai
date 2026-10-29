@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import date, datetime, timedelta
 
@@ -54,10 +55,16 @@ async def refund_quota(user_id: int, kind: str):
             await s.commit()
 
 
+# Yangi ish qo'shilganda worker'ni uyg'otadi (bazani har soniyada so'ramaslik uchun —
+# aks holda Neon hech qachon uxlamaydi va bepul limit tugaydi).
+JOB_ADDED = asyncio.Event()
+
+
 async def enqueue(kind: str, ref_id: int):
     async with Session() as s:
         s.add(Job(kind=kind, ref_id=ref_id))
         await s.commit()
+    JOB_ADDED.set()
 
 
 async def new_payment(user_id: int, purpose: str, amount: int,

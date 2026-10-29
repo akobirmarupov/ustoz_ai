@@ -14,7 +14,7 @@ from data import config
 from data.constants import KIND_TITLES
 from database.db import Session
 from database.models import BankChunk, BankUpload, Grade, Job, Order, Question, Subject, TestPart, TestSet, User
-from database.requests import enqueue
+from database.requests import JOB_ADDED, enqueue
 from keyboards.inline.buttons import set_menu_kb
 from services import ai
 from services.documents import build_docx, build_essay, build_pptx
@@ -342,9 +342,14 @@ async def _set_job(job_id: int, status: str, error: str | None = None):
 
 async def _loop(bot: Bot):
     while True:
+        JOB_ADDED.clear()
         job = await _take_job()
         if not job:
-            await asyncio.sleep(2)
+            # yangi ish kelguncha kutamiz; ehtiyot uchun 15 daqiqada bir tekshiramiz
+            try:
+                await asyncio.wait_for(JOB_ADDED.wait(), timeout=900)
+            except asyncio.TimeoutError:
+                pass
             continue
         run, fail = HANDLERS[job.kind]
         try:
@@ -379,7 +384,7 @@ async def _periodic(bot: Bot):
         for u in expired:
             await _notify(bot, u.id, "ℹ️ Premium muddati tugadi, hisobingiz Bepul tarifga o'tdi. "
                                      "Natijalaringiz saqlanib qoldi.")
-        await asyncio.sleep(600)
+        await asyncio.sleep(3600)
 
 
 async def run_worker(bot: Bot):
